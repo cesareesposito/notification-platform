@@ -1,0 +1,92 @@
+name: notification-platform
+
+services:
+  # ── Database ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: notifications
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - ./data/postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification -d notifications"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Message broker ────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI (guest/guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - ./data/rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Notification API ──────────────────────────────────────────────────────
+  notification-api:
+    build:
+      context: .
+      dockerfile: docker/Notification.Api.Dockerfile
+    container_name: notification-api
+    ports:
+      - "8891:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__NotificationDb: "Host=postgres;Port=5432;Database=notifications;Username=notification;Password=secret"
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: "5672"
+      RabbitMq__Username: guest
+      RabbitMq__Password: guest
+      Templates__FileSystem__BasePath: /app/templates
+      # Add per-tenant API keys via env or secrets
+      # ApiAuth__Keys__0: your-api-key-here
+    volumes:
+      - ./templates:/app/templates:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Notification Worker ───────────────────────────────────────────────────
+  notification-worker:
+    build:
+      context: .
+      dockerfile: docker/Notification.Worker.Dockerfile
+    container_name: notification-worker
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__NotificationDb: "Host=postgres;Port=5432;Database=notifications;Username=notification;Password=secret"
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: "5672"
+      RabbitMq__Username: guest
+      RabbitMq__Password: guest
+      Providers__SendGrid__ApiKey: ${SENDGRID_API_KEY:-}
+      Providers__SendGrid__SandboxMode: "true"
+      Providers__Firebase__CredentialFile: /credentials/firebase-default.json
+      Templates__FileSystem__BasePath: /app/templates
+    volumes:
+      - ./templates:/app/templates:ro
+      - ./credentials:/credentials:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped

@@ -1,0 +1,4 @@
+---
+subject: Your order #{{ order_id }} has shipped!
+---
+Your order is on its way and will arrive by {{ estimated_delivery }}.

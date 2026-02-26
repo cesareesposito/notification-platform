@@ -1,24 +1,3 @@
-Perché PostgreSQL
-JSONB per ProviderSettings: Dictionary<string,string> — indicizzabile nativamente, zero overhead. MySQL ha JSON ma senza la stessa potenza. TEXT illimitato per i template Scriban. Npgsql + EF Core 9 è lo stack .NET più maturo per Postgres.
-
-Cosa è stato aggiunto
-Nuovo progetto: Notification.Persistence
-File	Ruolo
-NotificationDbContext.cs	DbContext con JSONB su ProviderSettings
-Entities/TenantEntity.cs	Tabella tenants
-Entities/NotificationTemplateEntity.cs	Tabella notification_templates con unique index
-Repositories/PostgresTenantConfigProvider.cs	Sostituisce StaticTenantConfigProvider, cache 5 min
-Repositories/PostgresTemplateRepository.cs	Sostituisce FileSystemTemplateRepository, fallback identico, cache 10 min
-Seeding/DatabaseSeeder.cs	Auto-migrate + seed tenants + import .scriban dal filesystem
-Migrations/	Migration EF Core generata e pronta
-Nuovo controller: AdminController.cs
-
-GET/POST      /admin/tenants
-GET/PUT/DELETE /admin/tenants/{tenantId}
-GET/POST      /admin/tenants/{tenantId}/templates
-PUT/DELETE    /admin/templates/{id}
-Avvio in locale
-
 # 1. Avvia Postgres + RabbitMQ
 docker-compose up postgres rabbitmq -d
 

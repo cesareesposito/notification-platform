@@ -9,7 +9,7 @@ public class TenantConfig
     public string DisplayName { get; init; } = string.Empty;
 
     // Email
-    public string EmailProvider { get; init; } = "SendGrid"; // SendGrid | SES | Mailgun
+    public string EmailProvider { get; init; } = "Smtp"; // Smtp | SendGrid | SES | Mailgun
     public string? EmailFrom { get; init; }
     public string? EmailFromName { get; init; }
 

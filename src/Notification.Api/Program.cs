@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Notification.Api.Middleware;
 using Notification.Api.Scheduling;
 using Notification.Infrastructure.Extensions;
@@ -6,6 +7,13 @@ using Notification.Persistence.Seeding;
 using Notification.Templates.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Data Protection: shared key ring with Notification.Worker for SMTP password encryption.
+// Both services must mount the same keys directory (e.g. /keys volume in Docker).
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(
+        new DirectoryInfo(builder.Configuration["DataProtection:KeysPath"] ?? "/keys"))
+    .SetApplicationName("notification-platform");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

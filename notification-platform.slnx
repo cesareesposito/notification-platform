@@ -5,6 +5,7 @@
     <Project Path="src/Notification.Infrastructure/Notification.Infrastructure.csproj" />
     <Project Path="src/Notification.Persistence/Notification.Persistence.csproj" />
     <Project Path="src/Notification.Providers.Email.SendGrid/Notification.Providers.Email.SendGrid.csproj" />
+    <Project Path="src/Notification.Providers.Email.Smtp/Notification.Providers.Email.Smtp.csproj" />
     <Project Path="src/Notification.Providers.Push.Firebase/Notification.Providers.Push.Firebase.csproj" />
     <Project Path="src/Notification.Templates/Notification.Templates.csproj" />
     <Project Path="src/Notification.Worker/Notification.Worker.csproj" />

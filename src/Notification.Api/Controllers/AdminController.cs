@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Notification.Api.Requests.Admin;
@@ -16,18 +17,24 @@ namespace Notification.Api.Controllers;
 [Route("api/[controller]")]
 public class AdminController : ControllerBase
 {
+    // Must match SmtpEmailProvider.DataProtectionPurpose so both encrypt/decrypt with the same key.
+    private const string SmtpDataProtectionPurpose = "SmtpPassword";
+
     private readonly IDbContextFactory<NotificationDbContext> _dbFactory;
     private readonly PostgresTenantConfigProvider _tenantProvider;
     private readonly PostgresTemplateRepository _templateRepository;
+    private readonly IDataProtector _protector;
 
     public AdminController(
         IDbContextFactory<NotificationDbContext> dbFactory,
         PostgresTenantConfigProvider tenantProvider,
-        PostgresTemplateRepository templateRepository)
+        PostgresTemplateRepository templateRepository,
+        IDataProtectionProvider dataProtectionProvider)
     {
         _dbFactory = dbFactory;
         _tenantProvider = tenantProvider;
         _templateRepository = templateRepository;
+        _protector = dataProtectionProvider.CreateProtector(SmtpDataProtectionPurpose);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -81,7 +88,7 @@ public class AdminController : ControllerBase
             EmailFrom = req.EmailFrom,
             EmailFromName = req.EmailFromName,
             PushProvider = req.PushProvider,
-            ProviderSettings = req.ProviderSettings,
+            ProviderSettings = EncryptSmtpPassword(req.ProviderSettings),
             RateLimitPerMinute = req.RateLimitPerMinute,
             IsActive = req.IsActive
         };
@@ -113,7 +120,8 @@ public class AdminController : ControllerBase
         entity.EmailFrom = req.EmailFrom;
         entity.EmailFromName = req.EmailFromName;
         entity.PushProvider = req.PushProvider;
-        entity.ProviderSettings = req.ProviderSettings;
+        // Pass existing encrypted settings so a blank/placeholder password keeps the current value.
+        entity.ProviderSettings = EncryptSmtpPassword(req.ProviderSettings, entity.ProviderSettings);
         entity.RateLimitPerMinute = req.RateLimitPerMinute;
         entity.IsActive = req.IsActive;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
@@ -264,12 +272,54 @@ public class AdminController : ControllerBase
         t.EmailFrom,
         t.EmailFromName,
         t.PushProvider,
-        t.ProviderSettings,
+        ProviderSettings = MaskSensitiveSettings(t.ProviderSettings),
         t.RateLimitPerMinute,
         t.IsActive,
         t.CreatedAt,
         t.UpdatedAt
     };
+
+    // ── Sensitive settings helpers ────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns a copy of provider settings with sensitive values replaced by "***".
+    /// Never expose encrypted ciphertext or plaintext secrets in API responses.
+    /// </summary>
+    private static Dictionary<string, string> MaskSensitiveSettings(Dictionary<string, string> settings)
+    {
+        if (!settings.ContainsKey("Smtp:Password")) return settings;
+        var masked = new Dictionary<string, string>(settings) { ["Smtp:Password"] = "***" };
+        return masked;
+    }
+
+    /// <summary>
+    /// Encrypts Smtp:Password before persisting.
+    /// On update, if the caller sends "" or "***" (placeholder), the existing encrypted value is kept.
+    /// </summary>
+    private Dictionary<string, string> EncryptSmtpPassword(
+        Dictionary<string, string> incoming,
+        Dictionary<string, string>? existing = null)
+    {
+        var result = new Dictionary<string, string>(incoming);
+
+        if (!result.TryGetValue("Smtp:Password", out var pwd))
+            return result;
+
+        if (string.IsNullOrEmpty(pwd) || pwd == "***")
+        {
+            // Preserve the already-encrypted password stored in DB.
+            if (existing?.TryGetValue("Smtp:Password", out var kept) == true)
+                result["Smtp:Password"] = kept;
+            else
+                result.Remove("Smtp:Password");
+        }
+        else
+        {
+            result["Smtp:Password"] = _protector.Protect(pwd);
+        }
+
+        return result;
+    }
 
     private static object TemplateResponse(NotificationTemplateEntity t) => new
     {

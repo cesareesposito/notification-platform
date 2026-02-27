@@ -66,7 +66,7 @@ public class DatabaseSeeder
         {
             TenantId = "default",
             DisplayName = "Default (fallback templates)",
-            EmailProvider = "SendGrid",
+            EmailProvider = "Smtp",
             PushProvider = "Firebase",
             IsActive = true
         },
@@ -74,13 +74,15 @@ public class DatabaseSeeder
         {
             TenantId = "tenant-a",
             DisplayName = "Tenant A",
-            EmailProvider = "SendGrid",
+            EmailProvider = "Smtp",
             EmailFrom = "noreply@tenant-a.com",
             EmailFromName = "Tenant A",
             PushProvider = "Firebase",
             ProviderSettings = new Dictionary<string, string>
             {
-                ["SendGrid:ApiKey"] = "",
+                // Per-tenant SMTP overrides can be set via the admin API (POST /admin/tenants/tenant-a):
+                // Smtp:Host, Smtp:Port, Smtp:Username, Smtp:Password (encrypted on write).
+                // Leave empty to fall back to global Providers:Smtp settings.
                 ["Firebase:CredentialFile"] = "/credentials/tenant-a-firebase.json"
             },
             RateLimitPerMinute = 100
@@ -89,13 +91,12 @@ public class DatabaseSeeder
         {
             TenantId = "tenant-b",
             DisplayName = "Tenant B",
-            EmailProvider = "SendGrid",
+            EmailProvider = "Smtp",
             EmailFrom = "noreply@tenant-b.com",
             EmailFromName = "Tenant B",
             PushProvider = "Firebase",
             ProviderSettings = new Dictionary<string, string>
             {
-                ["SendGrid:ApiKey"] = "",
                 ["Firebase:CredentialFile"] = "/credentials/tenant-b-firebase.json"
             },
             RateLimitPerMinute = 200

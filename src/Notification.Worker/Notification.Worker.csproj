@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Abstractions" Version="9.0.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.3" />
   </ItemGroup>
 
@@ -15,7 +19,7 @@
     <ProjectReference Include="..\Notification.Domain\Notification.Domain.csproj" />
     <ProjectReference Include="..\Notification.Infrastructure\Notification.Infrastructure.csproj" />
     <ProjectReference Include="..\Notification.Templates\Notification.Templates.csproj" />
-    <ProjectReference Include="..\Notification.Providers.Email.SendGrid\Notification.Providers.Email.SendGrid.csproj" />
+    <ProjectReference Include="..\Notification.Providers.Email.Smtp\Notification.Providers.Email.Smtp.csproj" />
     <ProjectReference Include="..\Notification.Providers.Push.Firebase\Notification.Providers.Push.Firebase.csproj" />
     <ProjectReference Include="..\Notification.Persistence\Notification.Persistence.csproj" />
   </ItemGroup>

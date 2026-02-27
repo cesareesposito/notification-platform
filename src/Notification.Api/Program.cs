@@ -1,4 +1,5 @@
 using Notification.Api.Middleware;
+using Notification.Api.Scheduling;
 using Notification.Infrastructure.Extensions;
 using Notification.Persistence.Extensions;
 using Notification.Persistence.Seeding;
@@ -28,6 +29,9 @@ builder.Services.AddNotificationPersistence(builder.Configuration);
 // Template renderer (Scriban) — repository is provided by Persistence
 builder.Services.AddNotificationTemplates();
 
+// Quartz.NET scheduling (PostgreSQL job store)
+builder.Services.AddNotificationScheduling(builder.Configuration);
+
 var app = builder.Build();
 
 // ── Migrate DB + seed initial data on startup ─────────────────────────────────
@@ -37,6 +41,11 @@ await using (var scope = app.Services.CreateAsyncScope())
     await seeder.SeedAsync(
         templatesBasePath: builder.Configuration["Templates:FileSystem:BasePath"] ?? "templates");
 }
+
+// ── Initialize Quartz schema (idempotent) ─────────────────────────────────────
+await QuartzSchemaInitializer.InitializeAsync(
+    connectionString: builder.Configuration.GetConnectionString("NotificationDb")!,
+    logger: app.Logger);
 
 app.UseMiddleware<ApiKeyAuthMiddleware>();
 

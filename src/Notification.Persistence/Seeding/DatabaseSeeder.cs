@@ -14,6 +14,7 @@ namespace Notification.Persistence.Seeding;
 /// </summary>
 public class DatabaseSeeder
 {
+    private const long SeederAdvisoryLockId = 681294731145923516L;
     private readonly IDbContextFactory<NotificationDbContext> _dbFactory;
     private readonly ILogger<DatabaseSeeder> _logger;
     private readonly IConfiguration _configuration;
@@ -31,21 +32,40 @@ public class DatabaseSeeder
     public async Task SeedAsync(string templatesBasePath = "templates", CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await db.Database.OpenConnectionAsync(ct);
 
-        // 1. Auto-migrate
-        _logger.LogInformation("Applying pending database migrations…");
-        await db.Database.MigrateAsync(ct);
+        try
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_lock({SeederAdvisoryLockId})", ct);
 
-        // 2. Seed tenants
-        await SeedTenantsAsync(db, ct);
+            // 1. Auto-migrate
+            _logger.LogInformation("Applying pending database migrations…");
+            await db.Database.MigrateAsync(ct);
 
-        // 3. Seed admin users
-        await SeedAdminUsersAsync(db, ct);
+            // 2. Seed tenants
+            await SeedTenantsAsync(db, ct);
 
-        // 4. Import filesystem templates
-        await ImportFilesystemTemplatesAsync(db, templatesBasePath, ct);
+            // 3. Seed admin users
+            await SeedAdminUsersAsync(db, ct);
 
-        _logger.LogInformation("Database seeding completed.");
+            // 4. Import filesystem templates
+            await ImportFilesystemTemplatesAsync(db, templatesBasePath, ct);
+
+            _logger.LogInformation("Database seeding completed.");
+        }
+        finally
+        {
+            try
+            {
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT pg_advisory_unlock({SeederAdvisoryLockId})", ct);
+            }
+            finally
+            {
+                await db.Database.CloseConnectionAsync();
+            }
+        }
     }
 
     // ── Tenants ───────────────────────────────────────────────────────────────
@@ -61,7 +81,7 @@ public class DatabaseSeeder
                 continue;
             }
 
-            db.Tenants.Add(seed);
+            db.Tenants.Add(seed.CreateEntity());
             _logger.LogInformation("Seeded client '{ClientId}'.", seed.ClientId);
         }
 
@@ -71,7 +91,7 @@ public class DatabaseSeeder
     /// <summary>
     /// Override or replace with data from configuration / environment as needed.
     /// </summary>
-    private static readonly IReadOnlyList<TenantEntity> SeedTenants =
+    private static readonly IReadOnlyList<TenantSeed> SeedTenants =
     [
         // "default" is the virtual fallback tenant — templates here are shared by all tenants
         new()
@@ -81,39 +101,34 @@ public class DatabaseSeeder
             EmailProvider = "Smtp",
             PushProvider = "Firebase",
             IsActive = true
-        },
-        new()
-        {
-            ClientId = "tenant-a",
-            DisplayName = "Tenant A",
-            EmailProvider = "Smtp",
-            EmailFrom = "noreply@tenant-a.com",
-            EmailFromName = "Tenant A",
-            PushProvider = "Firebase",
-            ProviderSettings = new Dictionary<string, string>
-            {
-                // Per-tenant SMTP overrides can be set via the admin API (POST /admin/tenants/tenant-a):
-                // Smtp:Host, Smtp:Port, Smtp:Username, Smtp:Password (encrypted on write).
-                // Leave empty to fall back to global Providers:Smtp settings.
-                ["Firebase:CredentialFile"] = "/credentials/tenant-a-firebase.json"
-            },
-            RateLimitPerMinute = 100
-        },
-        new()
-        {
-            ClientId = "tenant-b",
-            DisplayName = "Tenant B",
-            EmailProvider = "Smtp",
-            EmailFrom = "noreply@tenant-b.com",
-            EmailFromName = "Tenant B",
-            PushProvider = "Firebase",
-            ProviderSettings = new Dictionary<string, string>
-            {
-                ["Firebase:CredentialFile"] = "/credentials/tenant-b-firebase.json"
-            },
-            RateLimitPerMinute = 200
         }
     ];
+
+    private sealed class TenantSeed
+    {
+        public required string ClientId { get; init; }
+        public required string DisplayName { get; init; }
+        public required string EmailProvider { get; init; }
+        public string? EmailFrom { get; init; }
+        public string? EmailFromName { get; init; }
+        public required string PushProvider { get; init; }
+        public Dictionary<string, string> ProviderSettings { get; init; } = [];
+        public int RateLimitPerMinute { get; init; } = 100;
+        public bool IsActive { get; init; } = true;
+
+        public TenantEntity CreateEntity() => new()
+        {
+            ClientId = ClientId,
+            DisplayName = DisplayName,
+            EmailProvider = EmailProvider,
+            EmailFrom = EmailFrom,
+            EmailFromName = EmailFromName,
+            PushProvider = PushProvider,
+            ProviderSettings = new Dictionary<string, string>(ProviderSettings),
+            RateLimitPerMinute = RateLimitPerMinute,
+            IsActive = IsActive
+        };
+    }
 
     // ── Admin Users ───────────────────────────────────────────────────────────
 

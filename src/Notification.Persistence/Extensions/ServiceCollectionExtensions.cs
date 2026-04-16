@@ -24,19 +24,13 @@ public static class ServiceCollectionExtensions
                 "Add it to appsettings.json or via environment variable " +
                 "ConnectionStrings__NotificationDb.");
 
-        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
-        dataSourceBuilder.EnableDynamicJson();
-        var dataSource = dataSourceBuilder.Build();
+        var dataSource = CreateDataSource(connectionString);
 
         services.AddSingleton(dataSource);
 
         // DbContext factory (thread-safe, works with Singleton and Scoped services)
         services.AddDbContextFactory<NotificationDbContext>(opts =>
-            opts.UseNpgsql(dataSource, npgsql =>
-            {
-                npgsql.EnableRetryOnFailure(maxRetryCount: 5);
-                npgsql.CommandTimeout(30);
-            }));
+            ConfigureDbContext(opts, dataSource));
 
         // In-memory cache (shared for tenant + template lookups)
         services.AddMemoryCache();
@@ -55,5 +49,23 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DatabaseSeeder>();
 
         return services;
+    }
+
+    internal static NpgsqlDataSource CreateDataSource(string connectionString)
+    {
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        dataSourceBuilder.EnableDynamicJson();
+        return dataSourceBuilder.Build();
+    }
+
+    internal static void ConfigureDbContext(
+        DbContextOptionsBuilder optionsBuilder,
+        NpgsqlDataSource dataSource)
+    {
+        optionsBuilder.UseNpgsql(dataSource, npgsql =>
+        {
+            npgsql.EnableRetryOnFailure(maxRetryCount: 5);
+            npgsql.CommandTimeout(30);
+        });
     }
 }

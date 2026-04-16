@@ -106,31 +106,43 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 // ── Serve Admin SPA from wwwroot/admin/browser ────────────────────────────────
-var adminBrowserPath = Path.Combine(builder.Environment.WebRootPath ?? "wwwroot", "admin", "browser");
+var webRootPath = app.Environment.WebRootPath
+    ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+var adminBrowserPath = Path.Combine(webRootPath, "admin", "browser");
+var adminIndexPath = Path.Combine(adminBrowserPath, "index.html");
 
-// Serve static assets (JS/CSS/etc.) under /admin/** with extension
-app.UseStaticFiles(new StaticFileOptions
+if (Directory.Exists(adminBrowserPath) && File.Exists(adminIndexPath))
 {
-    RequestPath = "/admin",
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(adminBrowserPath)
-});
+    // Serve static assets (JS/CSS/etc.) under /admin/** with extension
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        RequestPath = "/admin",
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(adminBrowserPath)
+    });
+}
+else
+{
+    app.Logger.LogWarning("Admin SPA assets not found at {AdminBrowserPath}", adminBrowserPath);
+}
 
 // Default static files for everything else under wwwroot root
 app.UseStaticFiles();
 
 // SPA fallback: any /admin/** path that isn't a file → serve index.html
-app.MapWhen(
-    ctx => ctx.Request.Path.StartsWithSegments("/admin") &&
-           !ctx.Request.Path.Value!.Contains('.'),
-    adminApp =>
-    {
-        adminApp.Run(async ctx =>
+if (File.Exists(adminIndexPath))
+{
+    app.MapWhen(
+        ctx => ctx.Request.Path.StartsWithSegments("/admin") &&
+               !ctx.Request.Path.Value!.Contains('.'),
+        adminApp =>
         {
-            var indexPath = Path.Combine(adminBrowserPath, "index.html");
-            ctx.Response.ContentType = "text/html";
-            await ctx.Response.SendFileAsync(indexPath);
+            adminApp.Run(async ctx =>
+            {
+                ctx.Response.ContentType = "text/html";
+                await ctx.Response.SendFileAsync(adminIndexPath);
+            });
         });
-    });
+}
 
 
 app.MapHealthChecks("/health");
@@ -138,7 +150,7 @@ app.MapControllers();
 
 app.MapGet("/", context =>
     {
-        context.Response.Redirect("/api/swagger/index.html");
+        context.Response.Redirect("/swagger/index.html");
         return Task.CompletedTask;
     });
 

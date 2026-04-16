@@ -70,7 +70,6 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    restart: unless-stopped
 
   # ── Notification Worker ───────────────────────────────────────────────────
   notification-worker:
@@ -98,4 +97,3 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    restart: unless-stopped

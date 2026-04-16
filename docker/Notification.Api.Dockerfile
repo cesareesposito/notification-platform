@@ -1,4 +1,13 @@
 # syntax=docker/dockerfile:1
+FROM node:24-alpine AS admin-build
+WORKDIR /workspace/admin-ui
+
+COPY admin-ui/package.json admin-ui/package-lock.json ./
+RUN npm install
+
+COPY admin-ui/ ./
+RUN npm run build
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
@@ -34,5 +43,6 @@ ENV ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
 
 COPY --from=build /app/publish .
+COPY --from=admin-build /workspace/src/Notification.Api/wwwroot/admin ./wwwroot/admin
 
 ENTRYPOINT ["dotnet", "Notification.Api.dll"]

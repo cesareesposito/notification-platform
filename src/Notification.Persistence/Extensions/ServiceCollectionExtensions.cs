@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Notification.Domain.Abstractions;
 using Notification.Persistence.Repositories;
 using Notification.Persistence.Seeding;
@@ -23,9 +24,15 @@ public static class ServiceCollectionExtensions
                 "Add it to appsettings.json or via environment variable " +
                 "ConnectionStrings__NotificationDb.");
 
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        dataSourceBuilder.EnableDynamicJson();
+        var dataSource = dataSourceBuilder.Build();
+
+        services.AddSingleton(dataSource);
+
         // DbContext factory (thread-safe, works with Singleton and Scoped services)
         services.AddDbContextFactory<NotificationDbContext>(opts =>
-            opts.UseNpgsql(connectionString, npgsql =>
+            opts.UseNpgsql(dataSource, npgsql =>
             {
                 npgsql.EnableRetryOnFailure(maxRetryCount: 5);
                 npgsql.CommandTimeout(30);

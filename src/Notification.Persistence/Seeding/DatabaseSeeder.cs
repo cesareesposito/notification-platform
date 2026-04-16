@@ -12,48 +12,50 @@ namespace Notification.Persistence.Seeding;
 /// </summary>
 public class DatabaseSeeder
 {
-    private readonly NotificationDbContext _db;
+    private readonly IDbContextFactory<NotificationDbContext> _dbFactory;
     private readonly ILogger<DatabaseSeeder> _logger;
 
-    public DatabaseSeeder(NotificationDbContext db, ILogger<DatabaseSeeder> logger)
+    public DatabaseSeeder(IDbContextFactory<NotificationDbContext> dbFactory, ILogger<DatabaseSeeder> logger)
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _logger = logger;
     }
 
     public async Task SeedAsync(string templatesBasePath = "templates", CancellationToken ct = default)
     {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+
         // 1. Auto-migrate
         _logger.LogInformation("Applying pending database migrations…");
-        await _db.Database.MigrateAsync(ct);
+        await db.Database.MigrateAsync(ct);
 
         // 2. Seed tenants
-        await SeedTenantsAsync(ct);
+        await SeedTenantsAsync(db, ct);
 
         // 3. Import filesystem templates
-        await ImportFilesystemTemplatesAsync(templatesBasePath, ct);
+        await ImportFilesystemTemplatesAsync(db, templatesBasePath, ct);
 
         _logger.LogInformation("Database seeding completed.");
     }
 
     // ── Tenants ───────────────────────────────────────────────────────────────
 
-    private async Task SeedTenantsAsync(CancellationToken ct)
+    private async Task SeedTenantsAsync(NotificationDbContext db, CancellationToken ct)
     {
         foreach (var seed in SeedTenants)
         {
-            var exists = await _db.Tenants.AnyAsync(t => t.TenantId == seed.TenantId, ct);
+            var exists = await db.Tenants.AnyAsync(t => t.TenantId == seed.TenantId, ct);
             if (exists)
             {
                 _logger.LogDebug("Tenant '{TenantId}' already exists, skipping.", seed.TenantId);
                 continue;
             }
 
-            _db.Tenants.Add(seed);
+            db.Tenants.Add(seed);
             _logger.LogInformation("Seeded tenant '{TenantId}'.", seed.TenantId);
         }
 
-        await _db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>
@@ -110,7 +112,7 @@ public class DatabaseSeeder
     ///   {tenantId}/{channel}/{language}/{templateName}.scriban
     /// and upserts them into notification_templates.
     /// </summary>
-    private async Task ImportFilesystemTemplatesAsync(string basePath, CancellationToken ct)
+    private async Task ImportFilesystemTemplatesAsync(NotificationDbContext db, string basePath, CancellationToken ct)
     {
         if (!Directory.Exists(basePath))
         {
@@ -149,7 +151,7 @@ public class DatabaseSeeder
             var content = await File.ReadAllTextAsync(file, ct);
 
             // Upsert: update if exists, insert if not
-            var existing = await _db.Templates.FirstOrDefaultAsync(
+                        var existing = await db.Templates.FirstOrDefaultAsync(
                 t => t.TenantId == tenantId
                   && t.TemplateName == templateName
                   && t.Channel == channel
@@ -163,7 +165,7 @@ public class DatabaseSeeder
             }
             else
             {
-                _db.Templates.Add(new NotificationTemplateEntity
+                db.Templates.Add(new NotificationTemplateEntity
                 {
                     TenantId = tenantId,
                     TemplateName = templateName,
@@ -177,6 +179,6 @@ public class DatabaseSeeder
             }
         }
 
-        await _db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(ct);
     }
 }

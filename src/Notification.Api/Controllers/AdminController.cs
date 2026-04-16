@@ -217,6 +217,17 @@ public class AdminController : ControllerBase
         return Ok(TemplateResponse(existing));
     }
 
+    /// <summary>Get a template by its numeric ID, including full content.</summary>
+    [HttpGet("templates/{id:int}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetTemplate(int id, CancellationToken ct)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var entity = await db.Templates.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id, ct);
+        return entity is null ? NotFound() : Ok(TemplateDetailResponse(entity));
+    }
+
     /// <summary>Update a template by its numeric ID.</summary>
     [HttpPut("templates/{id:int}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -333,5 +344,19 @@ public class AdminController : ControllerBase
         t.CreatedAt,
         t.UpdatedAt,
         ContentPreview = t.Content.Length > 200 ? t.Content[..200] + "…" : t.Content
+    };
+
+    private static object TemplateDetailResponse(NotificationTemplateEntity t) => new
+    {
+        t.Id,
+        t.TenantId,
+        t.TemplateName,
+        t.Channel,
+        t.Language,
+        t.Content,
+        t.IsActive,
+        t.Version,
+        t.CreatedAt,
+        t.UpdatedAt
     };
 }

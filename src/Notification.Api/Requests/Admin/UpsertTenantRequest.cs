@@ -6,7 +6,7 @@ public class UpsertTenantRequest
 {
     [Required, MaxLength(200)] public string DisplayName { get; init; } = string.Empty;
 
-    [Required, MaxLength(50)] public string EmailProvider { get; init; } = "SendGrid";
+    [Required, MaxLength(50)] public string EmailProvider { get; init; } = "smtp";
     [EmailAddress] public string? EmailFrom { get; init; }
     public string? EmailFromName { get; init; }
 

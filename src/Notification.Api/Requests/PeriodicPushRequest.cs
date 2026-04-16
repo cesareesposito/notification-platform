@@ -24,6 +24,9 @@ public class PeriodicPushRequest
     /// </summary>
     [Required] public string CronExpression { get; init; } = string.Empty;
 
+    /// <summary>Time zone used to interpret the cron expression. Null or empty = UTC.</summary>
+    public string? TimeZoneId { get; init; }
+
     /// <summary>When to start firing. Null = immediately.</summary>
     public DateTimeOffset? StartAt { get; init; }
 

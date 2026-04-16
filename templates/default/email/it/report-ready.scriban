@@ -1,0 +1,13 @@
+---
+subject: La fase {{ phase_name }} e pronta per la compilazione del report
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Compilazione report</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Ciao {{ recipient_name }},</h1>
+  <p>La fase <strong>{{ phase_name }}</strong> del workflow <strong>{{ workflow_name }}</strong> e stata completata.</p>
+  <p>Puoi procedere con la compilazione del report collegato.</p>
+  <p style="font-size: 14px; color: #666;">Riferimento report: #{{ report_id }} del {{ report_date }}</p>
+</body>
+</html>

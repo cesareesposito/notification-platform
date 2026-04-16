@@ -12,6 +12,10 @@ dotnet run --project src/Notification.Api
 # Swagger UI → http://localhost:8891/api/swagger/index.html
 ```
 
+Nota operativa: `Notification.Api` e `Notification.Worker` devono condividere lo stesso key ring di ASP.NET Data Protection, altrimenti il worker non riesce a decifrare le password SMTP cifrate dall'API. Nel `docker-compose.yml` questo avviene tramite il volume condiviso `notification-data-protection-keys` montato su `/keys`.
+
+Se hai già salvato password SMTP con un key ring vecchio/non più disponibile, quelle password non sono recuperabili: dopo aver riallineato il key ring devi reinserirle e salvare di nuovo la configurazione tenant.
+
 Autenticazione: header `X-Api-Key` (facoltativo in dev — lascia `ApiAuth.Keys` vuoto per disabilitarlo).
 
 ---
@@ -94,7 +98,7 @@ Risposta `201 Created`:
 | `POST` | `/api/scheduled/email/periodic` | Schedula un'email ricorrente con espressione cron |
 | `POST` | `/api/scheduled/push/periodic` | Schedula una push ricorrente con espressione cron |
 
-Il campo `cronExpression` segue il formato **Quartz (6 campi)**: `secondi minuti ore giorno-mese mese giorno-settimana`.
+Il campo `cronExpression` segue il formato **Quartz**: `secondi minuti ore giorno-mese mese giorno-settimana` con **settimo campo `year` opzionale**.
 
 ##### Tabella di riferimento cron
 
@@ -112,8 +116,32 @@ Il campo `cronExpression` segue il formato **Quartz (6 campi)**: `secondi minuti
 | `"0 0/30 * * * ?"` | Ogni **30 minuti** |
 | `"0 0/10 8-18 * * ?"` | Ogni 10 minuti **tra le 08:00 e le 18:00** |
 | `"0 0 9 ? * 2#1"` | Il **primo martedì del mese** alle 09:00 |
+| `"0 0 12 * * ?"` | Ogni giorno alle **12:00** |
+| `"0 15 10 ? * *"` | Ogni giorno alle **10:15** |
+| `"0 15 10 * * ?"` | Ogni giorno alle **10:15** |
+| `"0 15 10 * * ? *"` | Ogni giorno alle **10:15** con campo `year` esplicito |
+| `"0 15 10 * * ? 2005"` | Ogni giorno alle **10:15** **solo nel 2005** |
+| `"0 * 14 * * ?"` | Ogni minuto **tra le 14:00 e le 14:59** |
+| `"0 0/5 14 * * ?"` | Ogni **5 minuti** tra le **14:00 e le 14:55** |
+| `"0 0/5 14,18 * * ?"` | Ogni **5 minuti** tra le **14:00 e le 14:55** e tra le **18:00 e le 18:55** |
+| `"0 0-5 14 * * ?"` | Ogni minuto **tra le 14:00 e le 14:05** |
+| `"0 10,44 14 ? 3 WED"` | A marzo, ogni **mercoledì** alle **14:10 e 14:44** |
+| `"0 15 10 ? * MON-FRI"` | Ogni **lunedì-venerdì** alle **10:15** |
+| `"0 15 10 15 * ?"` | Il **15 di ogni mese** alle **10:15** |
+| `"0 15 10 L * ?"` | L'**ultimo giorno del mese** alle **10:15** |
+| `"0 15 10 L-2 * ?"` | Il **penultimo giorno del mese** alle **10:15** |
+| `"0 15 10 ? * 6L"` | L'**ultimo venerdì del mese** alle **10:15** |
+| `"0 15 10 ? * 6L 2002-2005"` | L'**ultimo venerdì del mese** alle **10:15**, **dal 2002 al 2005** |
+| `"0 15 10 ? * 6#3"` | Il **terzo venerdì del mese** alle **10:15** |
+| `"0 0 12 1/5 * ?"` | Alle **12:00** ogni **5 giorni**, a partire dal **giorno 1** del mese |
+| `"0 11 11 11 11 ?"` | Ogni **11 novembre** alle **11:11** |
+| `"H H H * * ?"` | Una volta al giorno a un orario **derivato da hash** |
+| `"0 H H(0-7) * * ?"` | Una volta al giorno **tra mezzanotte e le 07:59** a un orario **derivato da hash** |
+| `"0 H/15 * * * ?"` | Ogni **15 minuti**, con offset iniziale **derivato da hash** |
 
 > **Nota:** usa `?` nei campi *giorno-mese* o *giorno-settimana* per indicare "nessun vincolo". I due campi non possono essere entrambi specificati contemporaneamente.
+>
+> **Nota avanzata:** il settimo campo `year` è opzionale. Le espressioni con `H` sono sintassi hash-derived: usale solo se il parser Quartz attivo nella tua versione le supporta.
 
 ##### Esempi concreti
 

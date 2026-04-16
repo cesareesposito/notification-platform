@@ -5,8 +5,8 @@ services:
   postgres:
     image: postgres:17-alpine
     container_name: postgres
-    # ports:
-    #   - "5432:5432"
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: notifications
       POSTGRES_USER: notification
@@ -23,9 +23,9 @@ services:
   rabbitmq:
     image: rabbitmq:4-management-alpine
     container_name: rabbitmq
-    # ports:
-    #   - "5672:5672"    # AMQP
-    #   - "15672:15672"  # Management UI (guest/guest)
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI (guest/guest)
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest

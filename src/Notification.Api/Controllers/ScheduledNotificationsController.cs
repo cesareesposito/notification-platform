@@ -109,6 +109,9 @@ public class ScheduledNotificationsController : ControllerBase
         if (!CronExpression.IsValidExpression(req.CronExpression))
             return BadRequest(new { error = $"Invalid cron expression: '{req.CronExpression}'." });
 
+        if (!TryResolveTimeZone(req.TimeZoneId, out var timeZone, out var timeZoneError))
+            return BadRequest(new { error = timeZoneError });
+
         var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.TenantId, ct);
         if (tenantConfig is null)
             return NotFound(new { error = $"Tenant '{req.TenantId}' not found." });
@@ -118,15 +121,15 @@ public class ScheduledNotificationsController : ControllerBase
             req.Data, req.IdempotencyKey, scheduledAt: null);
 
         var jobId = await SchedulePeriodicAsync(request, NotificationChannel.Email,
-            req.CronExpression, req.StartAt, req.EndAt, ct);
+            req.CronExpression, timeZone, req.StartAt, req.EndAt, ct);
 
         _logger.LogInformation(
-            "Scheduled periodic email {JobId} for tenant {TenantId} with cron '{Cron}'",
-            jobId, req.TenantId, req.CronExpression);
+            "Scheduled periodic email {JobId} for tenant {TenantId} with cron '{Cron}' in time zone '{TimeZoneId}'",
+            jobId, req.TenantId, req.CronExpression, timeZone.Id);
 
         return CreatedAtAction(nameof(GetJob), new { jobId },
             new { jobId, type = "periodic", channel = "Email", tenantId = req.TenantId,
-                  cron = req.CronExpression, startAt = req.StartAt, endAt = req.EndAt });
+                  cron = req.CronExpression, timeZoneId = timeZone.Id, startAt = req.StartAt, endAt = req.EndAt });
     }
 
     /// <summary>Schedule a recurring push notification using a cron expression.</summary>
@@ -142,6 +145,9 @@ public class ScheduledNotificationsController : ControllerBase
         if (!CronExpression.IsValidExpression(req.CronExpression))
             return BadRequest(new { error = $"Invalid cron expression: '{req.CronExpression}'." });
 
+        if (!TryResolveTimeZone(req.TimeZoneId, out var timeZone, out var timeZoneError))
+            return BadRequest(new { error = timeZoneError });
+
         var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.TenantId, ct);
         if (tenantConfig is null)
             return NotFound(new { error = $"Tenant '{req.TenantId}' not found." });
@@ -151,15 +157,15 @@ public class ScheduledNotificationsController : ControllerBase
             req.Data, req.IdempotencyKey, scheduledAt: null);
 
         var jobId = await SchedulePeriodicAsync(request, NotificationChannel.Push,
-            req.CronExpression, req.StartAt, req.EndAt, ct);
+            req.CronExpression, timeZone, req.StartAt, req.EndAt, ct);
 
         _logger.LogInformation(
-            "Scheduled periodic push {JobId} for tenant {TenantId} with cron '{Cron}'",
-            jobId, req.TenantId, req.CronExpression);
+            "Scheduled periodic push {JobId} for tenant {TenantId} with cron '{Cron}' in time zone '{TimeZoneId}'",
+            jobId, req.TenantId, req.CronExpression, timeZone.Id);
 
         return CreatedAtAction(nameof(GetJob), new { jobId },
             new { jobId, type = "periodic", channel = "Push", tenantId = req.TenantId,
-                  cron = req.CronExpression, startAt = req.StartAt, endAt = req.EndAt });
+                  cron = req.CronExpression, timeZoneId = timeZone.Id, startAt = req.StartAt, endAt = req.EndAt });
     }
 
     // ── Management ───────────────────────────────────────────────────────────
@@ -167,7 +173,7 @@ public class ScheduledNotificationsController : ControllerBase
     /// <summary>List all scheduled jobs.</summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> ListJobs(CancellationToken ct)
+    public async Task<IActionResult> ListJobs([FromQuery] string? tenantId, CancellationToken ct)
     {
         var scheduler = await _schedulerFactory.GetScheduler(ct);
         var result = new List<object>();
@@ -178,7 +184,14 @@ public class ScheduledNotificationsController : ControllerBase
             foreach (var key in keys)
             {
                 var dto = await BuildJobDtoAsync(scheduler, key, ct);
-                if (dto is not null) result.Add(dto);
+                if (dto is null)
+                    continue;
+
+                if (!string.IsNullOrWhiteSpace(tenantId)
+                    && !JobBelongsToTenant(dto, tenantId))
+                    continue;
+
+                result.Add(dto);
             }
         }
 
@@ -282,6 +295,7 @@ public class ScheduledNotificationsController : ControllerBase
         NotificationRequest request,
         NotificationChannel channel,
         string cronExpression,
+        TimeZoneInfo timeZone,
         DateTimeOffset? startAt,
         DateTimeOffset? endAt,
         CancellationToken ct)
@@ -297,11 +311,12 @@ public class ScheduledNotificationsController : ControllerBase
             .UsingJobData("recipient", request.Recipient)
             .UsingJobData("templateName", request.TemplateName)
             .UsingJobData("cron", cronExpression)
+            .UsingJobData("timeZoneId", timeZone.Id)
             .Build();
 
         var triggerBuilder = TriggerBuilder.Create()
             .WithIdentity(jobId, PeriodicGroup)
-            .WithCronSchedule(cronExpression, c => c.InTimeZone(TimeZoneInfo.Utc));
+            .WithCronSchedule(cronExpression, c => c.InTimeZone(timeZone));
 
         if (startAt.HasValue) triggerBuilder = triggerBuilder.StartAt(startAt.Value);
         else triggerBuilder = triggerBuilder.StartNow();
@@ -334,6 +349,7 @@ public class ScheduledNotificationsController : ControllerBase
         DateTimeOffset? nextFireTime = null;
         DateTimeOffset? previousFireTime = null;
         string? cron = null;
+        string? timeZoneId = null;
         DateTimeOffset? endAt = null;
 
         if (trigger is not null)
@@ -344,7 +360,10 @@ public class ScheduledNotificationsController : ControllerBase
             previousFireTime = trigger.GetPreviousFireTimeUtc();
             endAt = trigger.EndTimeUtc;
             if (trigger is ICronTrigger cronTrigger)
+            {
                 cron = cronTrigger.CronExpressionString;
+                timeZoneId = cronTrigger.TimeZone?.Id;
+            }
         }
 
         var dataMap = jobDetail.JobDataMap;
@@ -357,6 +376,7 @@ public class ScheduledNotificationsController : ControllerBase
             recipient   = dataMap.GetString("recipient"),
             templateName = dataMap.GetString("templateName"),
             cron,
+            timeZoneId = dataMap.ContainsKey("timeZoneId") ? dataMap.GetString("timeZoneId") : (timeZoneId ?? "UTC"),
             nextFireTime,
             previousFireTime,
             endAt,
@@ -391,4 +411,39 @@ public class ScheduledNotificationsController : ControllerBase
 
     private static string SerializeRequest(NotificationRequest request) =>
         JsonSerializer.Serialize(request);
+
+    private static bool JobBelongsToTenant(object dto, string tenantId)
+    {
+        var dtoTenantId = dto.GetType().GetProperty("tenantId")?.GetValue(dto) as string;
+        return string.Equals(dtoTenantId, tenantId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryResolveTimeZone(string? timeZoneId, out TimeZoneInfo timeZone, out string? error)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            timeZone = TimeZoneInfo.Utc;
+            error = null;
+            return true;
+        }
+
+        try
+        {
+            timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId.Trim());
+            error = null;
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            timeZone = TimeZoneInfo.Utc;
+            error = $"Invalid time zone: '{timeZoneId}'.";
+            return false;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            timeZone = TimeZoneInfo.Utc;
+            error = $"Invalid time zone: '{timeZoneId}'.";
+            return false;
+        }
+    }
 }

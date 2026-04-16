@@ -44,6 +44,8 @@ public sealed class RabbitMqNotificationConsumer : INotificationQueueConsumer, I
         _connection = await factory.CreateConnectionAsync(cancellationToken);
         _channel = await _connection.CreateChannelAsync(cancellationToken: cancellationToken);
 
+    await EnsureTopologyAsync(cancellationToken);
+
         // Prefetch one message at a time per consumer
         await _channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 1, global: false, cancellationToken);
 
@@ -94,6 +96,54 @@ public sealed class RabbitMqNotificationConsumer : INotificationQueueConsumer, I
 
         // Hold until cancellation
         await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+    }
+
+    private async Task EnsureTopologyAsync(CancellationToken cancellationToken)
+    {
+        await _channel!.ExchangeDeclareAsync(
+            exchange: $"{_options.ExchangeName}.dlx",
+            type: ExchangeType.Direct,
+            durable: true,
+            cancellationToken: cancellationToken);
+
+        await _channel.QueueDeclareAsync(
+            queue: $"{_options.QueueName}.dead-letter",
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            cancellationToken: cancellationToken);
+
+        await _channel.QueueBindAsync(
+            queue: $"{_options.QueueName}.dead-letter",
+            exchange: $"{_options.ExchangeName}.dlx",
+            routingKey: _options.RoutingKey,
+            cancellationToken: cancellationToken);
+
+        await _channel.ExchangeDeclareAsync(
+            exchange: _options.ExchangeName,
+            type: ExchangeType.Direct,
+            durable: true,
+            cancellationToken: cancellationToken);
+
+        var args = new Dictionary<string, object?>
+        {
+            ["x-dead-letter-exchange"] = $"{_options.ExchangeName}.dlx",
+            ["x-dead-letter-routing-key"] = _options.RoutingKey
+        };
+
+        await _channel.QueueDeclareAsync(
+            queue: _options.QueueName,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            arguments: args,
+            cancellationToken: cancellationToken);
+
+        await _channel.QueueBindAsync(
+            queue: _options.QueueName,
+            exchange: _options.ExchangeName,
+            routingKey: _options.RoutingKey,
+            cancellationToken: cancellationToken);
     }
 
     public async ValueTask DisposeAsync()

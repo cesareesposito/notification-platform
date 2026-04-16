@@ -18,12 +18,12 @@ public class StaticTenantConfigProvider : ITenantConfigProvider
     public StaticTenantConfigProvider(IOptions<TenantConfigOptions> options)
     {
         _configs = options.Value.Tenants
-            .ToDictionary(t => t.TenantId, StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(t => t.ClientId, StringComparer.OrdinalIgnoreCase);
     }
 
-    public Task<TenantConfigModel?> GetConfigAsync(string tenantId, CancellationToken cancellationToken = default)
+    public Task<TenantConfigModel?> GetConfigAsync(string clientId, CancellationToken cancellationToken = default)
     {
-        _configs.TryGetValue(tenantId, out var config);
+        _configs.TryGetValue(clientId, out var config);
         return Task.FromResult(config);
     }
 }

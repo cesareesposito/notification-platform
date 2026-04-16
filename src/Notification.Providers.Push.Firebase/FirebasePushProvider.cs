@@ -65,7 +65,7 @@ public class FirebasePushProvider : INotificationProvider
 
     private async Task<FirebaseApp> GetOrCreateAppAsync(TenantConfig tenantConfig)
     {
-        var appName = $"tenant-{tenantConfig.TenantId}";
+        var appName = $"client-{tenantConfig.ClientId}";
 
         await _lock.WaitAsync();
         try
@@ -85,8 +85,8 @@ public class FirebasePushProvider : INotificationProvider
             _appCache[appName] = app;
 
             _logger.LogInformation(
-                "Created FirebaseApp '{AppName}' for tenant {TenantId}",
-                appName, tenantConfig.TenantId);
+                "Created FirebaseApp '{AppName}' for client {ClientId}",
+                appName, tenantConfig.ClientId);
 
             return app;
         }

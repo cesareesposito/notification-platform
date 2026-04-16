@@ -9,9 +9,9 @@ namespace Notification.Persistence.Repositories;
 /// <summary>
 /// Loads Scriban template content from PostgreSQL with the same fallback chain
 /// as the old FileSystemTemplateRepository:
-///   1. (tenantId, name, channel, language) exact
-///   2. (tenantId, name, channel, "en")      language fallback
-///   3. ("default", name, channel, language)  tenant fallback
+///   1. (clientId, name, channel, language) exact
+///   2. (clientId, name, channel, "en")      language fallback
+///   3. ("default", name, channel, language) client fallback
 ///   4. ("default", name, channel, "en")
 ///
 /// Results are cached with a 10-minute sliding expiration.
@@ -23,7 +23,7 @@ public class PostgresTemplateRepository : ITemplateRepository
     private readonly ILogger<PostgresTemplateRepository> _logger;
 
     private static string CacheKey(NotificationTemplateKey k) =>
-        $"template:{k.TenantId}:{k.Channel}:{k.Language}:{k.TemplateName}";
+        $"template:{k.ClientId}:{k.Channel}:{k.Language}:{k.TemplateName}";
 
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(10);
 
@@ -50,8 +50,8 @@ public class PostgresTemplateRepository : ITemplateRepository
         if (content is null)
         {
             _logger.LogWarning(
-                "Template not found: Tenant={TenantId} Name={Name} Channel={Channel} Lang={Language}",
-                key.TenantId, key.TemplateName, key.Channel, key.Language);
+                "Template not found: ClientId={ClientId} Name={Name} Channel={Channel} Lang={Language}",
+                key.ClientId, key.TemplateName, key.Channel, key.Language);
             return null;
         }
 
@@ -76,13 +76,13 @@ public class PostgresTemplateRepository : ITemplateRepository
         await using var db = await _factory.CreateDbContextAsync(ct);
 
         var channel = key.Channel.ToString();
-        var tenantIds = new[] { key.TenantId, "default" };
+        var clientIds = new[] { key.ClientId, "default" };
 
         // Single query: fetch all matching rows for tenant + "default"
         var candidates = await db.Templates
             .AsNoTracking()
             .Where(t =>
-                tenantIds.Contains(t.TenantId) &&
+                clientIds.Contains(t.ClientId) &&
                 t.TemplateName == key.TemplateName &&
                 t.Channel == channel &&
                 t.IsActive)
@@ -91,8 +91,8 @@ public class PostgresTemplateRepository : ITemplateRepository
         // Priority order matching FileSystemTemplateRepository fallback
         var priority = new[]
         {
-            (key.TenantId, key.Language),
-            (key.TenantId, "en"),
+            (key.ClientId, key.Language),
+            (key.ClientId, "en"),
             ("default",    key.Language),
             ("default",    "en")
         };
@@ -100,12 +100,12 @@ public class PostgresTemplateRepository : ITemplateRepository
         foreach (var (tid, lang) in priority)
         {
             var match = candidates.FirstOrDefault(
-                c => c.TenantId == tid && c.Language == lang);
+                c => c.ClientId == tid && c.Language == lang);
 
             if (match is not null)
             {
                 _logger.LogDebug(
-                    "Template '{Name}' matched via ({TenantId}, {Lang})",
+                    "Template '{Name}' matched via ({ClientId}, {Lang})",
                     key.TemplateName, tid, lang);
                 return match.Content;
             }

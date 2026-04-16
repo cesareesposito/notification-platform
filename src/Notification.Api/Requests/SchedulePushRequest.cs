@@ -4,7 +4,7 @@ namespace Notification.Api.Requests;
 
 public class SchedulePushRequest
 {
-    [Required] public string TenantId { get; init; } = string.Empty;
+    [Required] public string ClientId { get; init; } = string.Empty;
 
     /// <summary>FCM/APNs device token.</summary>
     [Required] public string DeviceToken { get; init; } = string.Empty;

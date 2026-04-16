@@ -5,8 +5,8 @@ namespace Notification.Domain.Models;
 /// </summary>
 public class NotificationRequest
 {
-    /// <summary>Tenant that owns this notification.</summary>
-    public string TenantId { get; init; } = string.Empty;
+    /// <summary>Client that owns this notification.</summary>
+    public string ClientId { get; init; } = string.Empty;
 
     /// <summary>Delivery channel.</summary>
     public NotificationChannel Channel { get; init; }

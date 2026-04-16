@@ -2,14 +2,14 @@ namespace Notification.Persistence.Entities;
 
 /// <summary>
 /// EF Core entity for the <c>notification_templates</c> table.
-/// Unique constraint on (TenantId, TemplateName, Channel, Language).
-/// Use TenantId = "default" for fallback templates shared across tenants.
+/// Unique constraint on (ClientId, TemplateName, Channel, Language).
+/// Use ClientId = "default" for fallback templates shared across clients.
 /// </summary>
 public class NotificationTemplateEntity
 {
     public int Id { get; set; }
 
-    public string TenantId { get; set; } = string.Empty;
+    public string ClientId { get; set; } = string.Empty;
     public string TemplateName { get; set; } = string.Empty;
 
     /// <summary>Stored as string: "Email", "Push", "WebPush".</summary>
@@ -27,7 +27,4 @@ public class NotificationTemplateEntity
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
-
-    // Navigation (optional, not required by EF but useful for queries)
-    public TenantEntity? Tenant { get; set; }
 }

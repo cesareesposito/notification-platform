@@ -6,10 +6,11 @@ namespace Notification.Persistence.Entities;
 /// </summary>
 public class TenantEntity
 {
-    public string TenantId { get; set; } = string.Empty;
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string ClientId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
 
-    public string EmailProvider { get; set; } = "SendGrid";
+    public string EmailProvider { get; set; } = "smtp";
     public string? EmailFrom { get; set; }
     public string? EmailFromName { get; set; }
 
@@ -23,6 +24,11 @@ public class TenantEntity
 
     public int RateLimitPerMinute { get; set; } = 100;
     public bool IsActive { get; set; } = true;
+
+    /// <summary>SHA-256 hex hash of the issued API key. Null when no active key exists.</summary>
+    public string? ApiKeyHash { get; set; }
+    public DateTimeOffset? ApiKeyCreatedAt { get; set; }
+    public DateTimeOffset? ApiKeyRevokedAt { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

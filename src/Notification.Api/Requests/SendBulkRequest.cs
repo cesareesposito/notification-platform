@@ -5,7 +5,7 @@ namespace Notification.Api.Requests;
 
 public class SendBulkRequest
 {
-    [Required] public string TenantId { get; init; } = string.Empty;
+    [Required] public string ClientId { get; init; } = string.Empty;
 
     [Required, MinLength(1), MaxLength(1000)]
     public List<BulkRecipient> Recipients { get; init; } = new();

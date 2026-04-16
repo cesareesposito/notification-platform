@@ -50,13 +50,13 @@ public class PublishNotificationJob : IJob
         {
             await _queue.PublishAsync(message, context.CancellationToken);
             _logger.LogInformation(
-                "Job {JobKey} published notification {MessageId} for tenant {TenantId} ({Channel})",
-                context.JobDetail.Key, message.MessageId, request.TenantId, request.Channel);
+                "Job {JobKey} published notification {MessageId} for client {ClientId} ({Channel})",
+                context.JobDetail.Key, message.MessageId, request.ClientId, request.Channel);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Job {JobKey} failed to publish notification for tenant {TenantId}",
-                context.JobDetail.Key, request.TenantId);
+            _logger.LogError(ex, "Job {JobKey} failed to publish notification for client {ClientId}",
+                context.JobDetail.Key, request.ClientId);
             throw new JobExecutionException(ex, refireImmediately: false);
         }
     }

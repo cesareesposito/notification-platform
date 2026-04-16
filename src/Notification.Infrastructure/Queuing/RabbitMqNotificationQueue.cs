@@ -54,8 +54,8 @@ public sealed class RabbitMqNotificationQueue : INotificationQueue, IAsyncDispos
             cancellationToken: cancellationToken);
 
         _logger.LogDebug(
-            "Published message {MessageId} for tenant {TenantId} via channel {Channel}",
-            message.MessageId, message.Request.TenantId, message.Request.Channel);
+            "Published message {MessageId} for client {ClientId} via channel {Channel}",
+            message.MessageId, message.Request.ClientId, message.Request.Channel);
     }
 
     private async Task EnsureConnectedAsync(CancellationToken ct)

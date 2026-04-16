@@ -39,28 +39,28 @@ public class NotificationDispatcher
     {
         var req = message.Request;
 
-        // 1. Tenant config
-        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.TenantId, ct);
+        // 1. Client config
+        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.ClientId, ct);
         if (tenantConfig is null)
         {
             _logger.LogError(
-                "Tenant '{TenantId}' not found for message {MessageId}. Dropping.",
-                req.TenantId, message.MessageId);
+                "Client '{ClientId}' not found for message {MessageId}. Dropping.",
+                req.ClientId, message.MessageId);
 
             await _auditLog.RecordAsync(message,
-                NotificationResult.Failure(message.MessageId, $"Tenant '{req.TenantId}' not found.", message.AttemptCount), ct);
+                NotificationResult.Failure(message.MessageId, $"Client '{req.ClientId}' not found.", message.AttemptCount), ct);
             return;
         }
 
         // 2. Load template
-        var templateKey = new NotificationTemplateKey(req.TenantId, req.TemplateName, req.Channel, req.Language);
+        var templateKey = new NotificationTemplateKey(req.ClientId, req.TemplateName, req.Channel, req.Language);
         var rawTemplate = await _templateRepository.GetTemplateAsync(templateKey, ct);
 
         if (rawTemplate is null)
         {
             _logger.LogError(
-                "Template '{Name}' not found for tenant '{TenantId}', channel {Channel}. Dropping.",
-                req.TemplateName, req.TenantId, req.Channel);
+                "Template '{Name}' not found for client '{ClientId}', channel {Channel}. Dropping.",
+                req.TemplateName, req.ClientId, req.Channel);
 
             await _auditLog.RecordAsync(message,
                 NotificationResult.Failure(message.MessageId, $"Template '{req.TemplateName}' not found.", message.AttemptCount), ct);
@@ -99,7 +99,7 @@ public class NotificationDispatcher
         await _auditLog.RecordAsync(message, result, ct);
 
         _logger.LogInformation(
-            "Dispatched {Channel} notification {MessageId} via {Provider} for tenant {TenantId}",
-            req.Channel, message.MessageId, providerName, req.TenantId);
+            "Dispatched {Channel} notification {MessageId} via {Provider} for client {ClientId}",
+            req.Channel, message.MessageId, providerName, req.ClientId);
     }
 }

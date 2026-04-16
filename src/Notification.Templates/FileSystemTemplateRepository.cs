@@ -7,9 +7,9 @@ namespace Notification.Templates;
 
 /// <summary>
 /// Loads templates from the local filesystem.
-/// File layout: {BasePath}/{tenantId}/{channel}/{language}/{templateName}.scriban
+/// File layout: {BasePath}/{clientId}/{channel}/{language}/{templateName}.scriban
 ///
-/// Falls back to the "default" tenant folder if a tenant-specific template is not found.
+/// Falls back to the "default" client folder if a client-specific template is not found.
 /// </summary>
 public class FileSystemTemplateRepository : ITemplateRepository
 {
@@ -31,9 +31,9 @@ public class FileSystemTemplateRepository : ITemplateRepository
         // Try tenant-specific first, then fallback to "default"
         var candidates = new[]
         {
-            BuildPath(key.TenantId, key.Channel, key.Language, key.TemplateName),
-            BuildPath(key.TenantId, key.Channel, "en", key.TemplateName),       // lang fallback
-            BuildPath("default", key.Channel, key.Language, key.TemplateName),   // tenant fallback
+            BuildPath(key.ClientId, key.Channel, key.Language, key.TemplateName),
+            BuildPath(key.ClientId, key.Channel, "en", key.TemplateName),       // lang fallback
+            BuildPath("default", key.Channel, key.Language, key.TemplateName),  // client fallback
             BuildPath("default", key.Channel, "en", key.TemplateName)
         };
 
@@ -46,16 +46,16 @@ public class FileSystemTemplateRepository : ITemplateRepository
         }
 
         _logger.LogWarning(
-            "Template not found for Tenant={TenantId} Channel={Channel} Lang={Language} Name={Name}",
-            key.TenantId, key.Channel, key.Language, key.TemplateName);
+            "Template not found for Client={ClientId} Channel={Channel} Lang={Language} Name={Name}",
+            key.ClientId, key.Channel, key.Language, key.TemplateName);
 
         return null;
     }
 
-    private string BuildPath(string tenant, NotificationChannel channel, string lang, string name)
+    private string BuildPath(string clientId, NotificationChannel channel, string lang, string name)
         => Path.Combine(
             _options.BasePath,
-            tenant,
+            clientId,
             channel.ToString().ToLowerInvariant(),
             lang,
             $"{name}.scriban");

@@ -19,7 +19,7 @@ public class PostgresTenantConfigProvider : ITenantConfigProvider
     private readonly IMemoryCache _cache;
     private readonly ILogger<PostgresTenantConfigProvider> _logger;
 
-    private static string CacheKey(string tenantId) => $"tenant:{tenantId}";
+    private static string CacheKey(string clientId) => $"tenant:{clientId}";
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
     public PostgresTenantConfigProvider(
@@ -33,10 +33,10 @@ public class PostgresTenantConfigProvider : ITenantConfigProvider
     }
 
     public async Task<TenantConfig?> GetConfigAsync(
-        string tenantId,
+        string clientId,
         CancellationToken cancellationToken = default)
     {
-        var key = CacheKey(tenantId);
+        var key = CacheKey(clientId);
 
         if (_cache.TryGetValue(key, out TenantConfig? cached))
             return cached;
@@ -45,12 +45,12 @@ public class PostgresTenantConfigProvider : ITenantConfigProvider
 
         var entity = await db.Tenants
             .AsNoTracking()
-            .Where(t => t.TenantId == tenantId && t.IsActive)
+            .Where(t => t.ClientId == clientId && t.IsActive)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (entity is null)
         {
-            _logger.LogWarning("Tenant '{TenantId}' not found in database.", tenantId);
+            _logger.LogWarning("Client '{ClientId}' not found in database.", clientId);
             return null;
         }
 
@@ -67,12 +67,12 @@ public class PostgresTenantConfigProvider : ITenantConfigProvider
     /// <summary>
     /// Call this after creating or updating a tenant to invalidate the cache.
     /// </summary>
-    public void InvalidateCache(string tenantId) =>
-        _cache.Remove(CacheKey(tenantId));
+    public void InvalidateCache(string clientId) =>
+        _cache.Remove(CacheKey(clientId));
 
     private static TenantConfig MapToConfig(TenantEntity e) => new()
     {
-        TenantId = e.TenantId,
+        ClientId = e.ClientId,
         DisplayName = e.DisplayName,
         EmailProvider = e.EmailProvider,
         EmailFrom = e.EmailFrom,

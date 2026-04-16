@@ -53,7 +53,14 @@ services:
       RabbitMq__Username: guest
       RabbitMq__Password: guest
       Templates__FileSystem__BasePath: /app/templates
-      # Add per-tenant API keys via env or secrets
+      # JWT secret for the admin UI — change this in production!
+      JwtAuth__Secret: ${NOTIFICATION_JWT_SECRET:-CHANGE_ME_IN_PRODUCTION_USE_32_CHARS_MIN}
+      JwtAuth__Issuer: notification-platform
+      JwtAuth__ExpiryAdminHours: "8"
+      JwtAuth__ExpiryClientHours: "1"
+      # Default password for the seeded admin user — change after first login
+      AdminAuth__DefaultPassword: ${NOTIFICATION_ADMIN_PASSWORD:-changeme}
+      # Add per-tenant API keys via env or secrets (backward compat)
       # ApiAuth__Keys__0: your-api-key-here
     volumes:
       - ./templates:/app/templates:ro

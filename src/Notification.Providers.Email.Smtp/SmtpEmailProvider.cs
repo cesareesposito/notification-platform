@@ -60,9 +60,9 @@ public class SmtpEmailProvider : INotificationProvider
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to decrypt SMTP password for tenant {TenantId}", tenantConfig.TenantId);
+                _logger.LogError(ex, "Failed to decrypt SMTP password for client {ClientId}", tenantConfig.ClientId);
                 throw new InvalidOperationException(
-                    $"Cannot decrypt SMTP password for tenant '{tenantConfig.TenantId}'.", ex);
+                    $"Cannot decrypt SMTP password for client '{tenantConfig.ClientId}'.", ex);
             }
         }
         else
@@ -110,12 +110,12 @@ public class SmtpEmailProvider : INotificationProvider
 
         if (skipCert)
             _logger.LogWarning(
-                "Smtp:SkipCertificateValidation is enabled for tenant {TenantId}, but System.Net.Mail does not support per-client certificate validation bypass. The setting will be ignored.",
-                tenantConfig.TenantId);
+                "Smtp:SkipCertificateValidation is enabled for client {ClientId}, but System.Net.Mail does not support per-client certificate validation bypass. The setting will be ignored.",
+                tenantConfig.ClientId);
 
         _logger.LogInformation(
-            "SMTP send starting for tenant {TenantId} to {Recipient} via {Host}:{Port} using System.Net.Mail (EnableSsl={EnableSsl}, AuthUser={Username}, SkipCert={SkipCert})",
-            tenantConfig.TenantId,
+            "SMTP send starting for client {ClientId} to {Recipient} via {Host}:{Port} using System.Net.Mail (EnableSsl={EnableSsl}, AuthUser={Username}, SkipCert={SkipCert})",
+            tenantConfig.ClientId,
             request.Recipient,
             host,
             port,
@@ -131,8 +131,8 @@ public class SmtpEmailProvider : INotificationProvider
         {
             _logger.LogError(
                 ex,
-                "SMTP send failed for tenant {TenantId} to {Recipient} via {Host}:{Port} using System.Net.Mail (EnableSsl={EnableSsl})",
-                tenantConfig.TenantId,
+                "SMTP send failed for client {ClientId} to {Recipient} via {Host}:{Port} using System.Net.Mail (EnableSsl={EnableSsl})",
+                tenantConfig.ClientId,
                 request.Recipient,
                 host,
                 port,

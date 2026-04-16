@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Notification.Api.Requests;
 using Notification.Api.Scheduling.Jobs;
@@ -11,6 +12,7 @@ namespace Notification.Api.Controllers;
 [ApiController]
 [Produces("application/json")]
 [Route("api/scheduled")]
+[Authorize(Policy = "AnyAuth")]
 public class ScheduledNotificationsController : ControllerBase
 {
     private readonly ISchedulerFactory _schedulerFactory;
@@ -45,22 +47,26 @@ public class ScheduledNotificationsController : ControllerBase
         if (req.ScheduledAt <= DateTimeOffset.UtcNow)
             return BadRequest(new { error = "ScheduledAt must be in the future." });
 
-        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.TenantId, ct);
-        if (tenantConfig is null)
-            return NotFound(new { error = $"Tenant '{req.TenantId}' not found." });
+        var clientId = ResolveClientId(req.ClientId);
+        if (clientId is null)
+            return Forbid();
 
-        var request = BuildRequest(req.TenantId, NotificationChannel.Email,
+        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(clientId, ct);
+        if (tenantConfig is null)
+            return NotFound(new { error = $"Client '{clientId}' not found." });
+
+        var request = BuildRequest(clientId, NotificationChannel.Email,
             req.Recipient, req.RecipientName, req.TemplateName, req.Language,
             req.Data, req.IdempotencyKey, req.ScheduledAt);
 
         var jobId = await ScheduleOnceAsync(request, NotificationChannel.Email, req.ScheduledAt, ct);
 
         _logger.LogInformation(
-            "Scheduled one-time email {JobId} for tenant {TenantId} at {ScheduledAt}",
-            jobId, req.TenantId, req.ScheduledAt);
+            "Scheduled one-time email {JobId} for client {ClientId} at {ScheduledAt}",
+            jobId, clientId, req.ScheduledAt);
 
         return CreatedAtAction(nameof(GetJob), new { jobId },
-            new { jobId, type = "once", channel = "Email", tenantId = req.TenantId, scheduledAt = req.ScheduledAt });
+            new { jobId, type = "once", channel = "Email", clientId, scheduledAt = req.ScheduledAt });
     }
 
     /// <summary>Schedule a single push notification at a specific date/time.</summary>
@@ -76,22 +82,26 @@ public class ScheduledNotificationsController : ControllerBase
         if (req.ScheduledAt <= DateTimeOffset.UtcNow)
             return BadRequest(new { error = "ScheduledAt must be in the future." });
 
-        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.TenantId, ct);
-        if (tenantConfig is null)
-            return NotFound(new { error = $"Tenant '{req.TenantId}' not found." });
+        var clientId = ResolveClientId(req.ClientId);
+        if (clientId is null)
+            return Forbid();
 
-        var request = BuildRequest(req.TenantId, NotificationChannel.Push,
+        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(clientId, ct);
+        if (tenantConfig is null)
+            return NotFound(new { error = $"Client '{clientId}' not found." });
+
+        var request = BuildRequest(clientId, NotificationChannel.Push,
             req.DeviceToken, req.RecipientName, req.TemplateName, req.Language,
             req.Data, req.IdempotencyKey, req.ScheduledAt);
 
         var jobId = await ScheduleOnceAsync(request, NotificationChannel.Push, req.ScheduledAt, ct);
 
         _logger.LogInformation(
-            "Scheduled one-time push {JobId} for tenant {TenantId} at {ScheduledAt}",
-            jobId, req.TenantId, req.ScheduledAt);
+            "Scheduled one-time push {JobId} for client {ClientId} at {ScheduledAt}",
+            jobId, clientId, req.ScheduledAt);
 
         return CreatedAtAction(nameof(GetJob), new { jobId },
-            new { jobId, type = "once", channel = "Push", tenantId = req.TenantId, scheduledAt = req.ScheduledAt });
+            new { jobId, type = "once", channel = "Push", clientId, scheduledAt = req.ScheduledAt });
     }
 
     // ── Periodic (cron) ──────────────────────────────────────────────────────
@@ -112,11 +122,15 @@ public class ScheduledNotificationsController : ControllerBase
         if (!TryResolveTimeZone(req.TimeZoneId, out var timeZone, out var timeZoneError))
             return BadRequest(new { error = timeZoneError });
 
-        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.TenantId, ct);
-        if (tenantConfig is null)
-            return NotFound(new { error = $"Tenant '{req.TenantId}' not found." });
+        var clientId = ResolveClientId(req.ClientId);
+        if (clientId is null)
+            return Forbid();
 
-        var request = BuildRequest(req.TenantId, NotificationChannel.Email,
+        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(clientId, ct);
+        if (tenantConfig is null)
+            return NotFound(new { error = $"Client '{clientId}' not found." });
+
+        var request = BuildRequest(clientId, NotificationChannel.Email,
             req.Recipient, req.RecipientName, req.TemplateName, req.Language,
             req.Data, req.IdempotencyKey, scheduledAt: null);
 
@@ -124,11 +138,11 @@ public class ScheduledNotificationsController : ControllerBase
             req.CronExpression, timeZone, req.StartAt, req.EndAt, ct);
 
         _logger.LogInformation(
-            "Scheduled periodic email {JobId} for tenant {TenantId} with cron '{Cron}' in time zone '{TimeZoneId}'",
-            jobId, req.TenantId, req.CronExpression, timeZone.Id);
+            "Scheduled periodic email {JobId} for client {ClientId} with cron '{Cron}' in time zone '{TimeZoneId}'",
+            jobId, clientId, req.CronExpression, timeZone.Id);
 
         return CreatedAtAction(nameof(GetJob), new { jobId },
-            new { jobId, type = "periodic", channel = "Email", tenantId = req.TenantId,
+            new { jobId, type = "periodic", channel = "Email", clientId,
                   cron = req.CronExpression, timeZoneId = timeZone.Id, startAt = req.StartAt, endAt = req.EndAt });
     }
 
@@ -148,11 +162,15 @@ public class ScheduledNotificationsController : ControllerBase
         if (!TryResolveTimeZone(req.TimeZoneId, out var timeZone, out var timeZoneError))
             return BadRequest(new { error = timeZoneError });
 
-        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.TenantId, ct);
-        if (tenantConfig is null)
-            return NotFound(new { error = $"Tenant '{req.TenantId}' not found." });
+        var clientId = ResolveClientId(req.ClientId);
+        if (clientId is null)
+            return Forbid();
 
-        var request = BuildRequest(req.TenantId, NotificationChannel.Push,
+        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(clientId, ct);
+        if (tenantConfig is null)
+            return NotFound(new { error = $"Client '{clientId}' not found." });
+
+        var request = BuildRequest(clientId, NotificationChannel.Push,
             req.DeviceToken, req.RecipientName, req.TemplateName, req.Language,
             req.Data, req.IdempotencyKey, scheduledAt: null);
 
@@ -160,11 +178,11 @@ public class ScheduledNotificationsController : ControllerBase
             req.CronExpression, timeZone, req.StartAt, req.EndAt, ct);
 
         _logger.LogInformation(
-            "Scheduled periodic push {JobId} for tenant {TenantId} with cron '{Cron}' in time zone '{TimeZoneId}'",
-            jobId, req.TenantId, req.CronExpression, timeZone.Id);
+            "Scheduled periodic push {JobId} for client {ClientId} with cron '{Cron}' in time zone '{TimeZoneId}'",
+            jobId, clientId, req.CronExpression, timeZone.Id);
 
         return CreatedAtAction(nameof(GetJob), new { jobId },
-            new { jobId, type = "periodic", channel = "Push", tenantId = req.TenantId,
+            new { jobId, type = "periodic", channel = "Push", clientId,
                   cron = req.CronExpression, timeZoneId = timeZone.Id, startAt = req.StartAt, endAt = req.EndAt });
     }
 
@@ -173,8 +191,12 @@ public class ScheduledNotificationsController : ControllerBase
     /// <summary>List all scheduled jobs.</summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> ListJobs([FromQuery] string? tenantId, CancellationToken ct)
+    public async Task<IActionResult> ListJobs([FromQuery] string? clientId, CancellationToken ct)
     {
+        var effectiveClientId = ResolveClientId(clientId);
+        if (!IsAdminScope() && effectiveClientId is null)
+            return Forbid();
+
         var scheduler = await _schedulerFactory.GetScheduler(ct);
         var result = new List<object>();
 
@@ -187,8 +209,8 @@ public class ScheduledNotificationsController : ControllerBase
                 if (dto is null)
                     continue;
 
-                if (!string.IsNullOrWhiteSpace(tenantId)
-                    && !JobBelongsToTenant(dto, tenantId))
+                if (!string.IsNullOrWhiteSpace(effectiveClientId)
+                    && !JobBelongsToClient(dto, effectiveClientId))
                     continue;
 
                 result.Add(dto);
@@ -210,6 +232,8 @@ public class ScheduledNotificationsController : ControllerBase
         if (key is null) return NotFound(new { error = $"Job '{jobId}' not found." });
 
         var dto = await BuildJobDtoAsync(scheduler, key, ct);
+        if (dto is not null && !CanAccessJob(dto))
+            return Forbid();
         return dto is not null ? Ok(dto) : NotFound(new { error = $"Job '{jobId}' not found." });
     }
 
@@ -223,6 +247,10 @@ public class ScheduledNotificationsController : ControllerBase
 
         var key = await FindJobKeyAsync(scheduler, jobId, ct);
         if (key is null) return NotFound(new { error = $"Job '{jobId}' not found." });
+
+        var dto = await BuildJobDtoAsync(scheduler, key, ct);
+        if (dto is not null && !CanAccessJob(dto))
+            return Forbid();
 
         await scheduler.DeleteJob(key, ct);
         _logger.LogInformation("Deleted scheduled job {JobId}", jobId);
@@ -240,6 +268,10 @@ public class ScheduledNotificationsController : ControllerBase
         var key = await FindJobKeyAsync(scheduler, jobId, ct);
         if (key is null) return NotFound(new { error = $"Job '{jobId}' not found." });
 
+        var dto = await BuildJobDtoAsync(scheduler, key, ct);
+        if (dto is not null && !CanAccessJob(dto))
+            return Forbid();
+
         await scheduler.PauseJob(key, ct);
         _logger.LogInformation("Paused scheduled job {JobId}", jobId);
         return Ok(new { jobId, status = "paused" });
@@ -255,6 +287,10 @@ public class ScheduledNotificationsController : ControllerBase
 
         var key = await FindJobKeyAsync(scheduler, jobId, ct);
         if (key is null) return NotFound(new { error = $"Job '{jobId}' not found." });
+
+        var dto = await BuildJobDtoAsync(scheduler, key, ct);
+        if (dto is not null && !CanAccessJob(dto))
+            return Forbid();
 
         await scheduler.ResumeJob(key, ct);
         _logger.LogInformation("Resumed scheduled job {JobId}", jobId);
@@ -275,7 +311,7 @@ public class ScheduledNotificationsController : ControllerBase
         var jobDetail = JobBuilder.Create<PublishNotificationJob>()
             .WithIdentity(jobId, OnceGroup)
             .UsingJobData(PublishNotificationJob.RequestDataKey, SerializeRequest(request))
-            .UsingJobData("tenantId", request.TenantId)
+            .UsingJobData("clientId", request.ClientId)
             .UsingJobData("channel", channel.ToString())
             .UsingJobData("recipient", request.Recipient)
             .UsingJobData("templateName", request.TemplateName)
@@ -306,7 +342,7 @@ public class ScheduledNotificationsController : ControllerBase
         var jobDetail = JobBuilder.Create<PublishNotificationJob>()
             .WithIdentity(jobId, PeriodicGroup)
             .UsingJobData(PublishNotificationJob.RequestDataKey, SerializeRequest(request))
-            .UsingJobData("tenantId", request.TenantId)
+            .UsingJobData("clientId", request.ClientId)
             .UsingJobData("channel", channel.ToString())
             .UsingJobData("recipient", request.Recipient)
             .UsingJobData("templateName", request.TemplateName)
@@ -371,7 +407,7 @@ public class ScheduledNotificationsController : ControllerBase
         {
             jobId       = key.Name,
             type        = key.Group,
-            tenantId    = dataMap.GetString("tenantId"),
+            clientId    = dataMap.GetString("clientId"),
             channel     = dataMap.GetString("channel"),
             recipient   = dataMap.GetString("recipient"),
             templateName = dataMap.GetString("templateName"),
@@ -385,7 +421,7 @@ public class ScheduledNotificationsController : ControllerBase
     }
 
     private static NotificationRequest BuildRequest(
-        string tenantId,
+        string clientId,
         NotificationChannel channel,
         string recipient,
         string? recipientName,
@@ -397,7 +433,7 @@ public class ScheduledNotificationsController : ControllerBase
     {
         return new NotificationRequest
         {
-            TenantId      = tenantId,
+            ClientId      = clientId,
             Channel       = channel,
             Recipient     = recipient,
             RecipientName = recipientName,
@@ -412,10 +448,33 @@ public class ScheduledNotificationsController : ControllerBase
     private static string SerializeRequest(NotificationRequest request) =>
         JsonSerializer.Serialize(request);
 
-    private static bool JobBelongsToTenant(object dto, string tenantId)
+    private static bool JobBelongsToClient(object dto, string clientId)
     {
-        var dtoTenantId = dto.GetType().GetProperty("tenantId")?.GetValue(dto) as string;
-        return string.Equals(dtoTenantId, tenantId, StringComparison.OrdinalIgnoreCase);
+        var dtoClientId = dto.GetType().GetProperty("clientId")?.GetValue(dto) as string;
+        return string.Equals(dtoClientId, clientId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsAdminScope() =>
+        User.HasClaim("scope", "admin");
+
+    private string? GetClientId() =>
+        User.FindFirst("notificationClientId")?.Value;
+
+    private string? ResolveClientId(string? requestedClientId)
+    {
+        if (IsAdminScope())
+            return requestedClientId;
+
+        return GetClientId();
+    }
+
+    private bool CanAccessJob(object dto)
+    {
+        if (IsAdminScope())
+            return true;
+
+        var clientId = GetClientId();
+        return !string.IsNullOrWhiteSpace(clientId) && JobBelongsToClient(dto, clientId);
     }
 
     private static bool TryResolveTimeZone(string? timeZoneId, out TimeZoneInfo timeZone, out string? error)

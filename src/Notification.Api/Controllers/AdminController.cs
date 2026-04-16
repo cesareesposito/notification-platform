@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,11 +11,15 @@ namespace Notification.Api.Controllers;
 
 /// <summary>
 /// CRUD management for tenants and notification templates.
-/// All endpoints require a valid X-Api-Key header (enforced by ApiKeyAuthMiddleware).
+/// Requires either a valid X-Api-Key header (enforced by ApiKeyAuthMiddleware)
+/// or a JWT with scope:admin or scope:client (issued by AuthController).
+/// scope:client requests are automatically scoped to their notificationClientId claim.
+/// scope:admin requests have unrestricted access.
 /// </summary>
 [ApiController]
 [Produces("application/json")]
 [Route("api/[controller]")]
+[Authorize(Policy = "AnyAuth")]
 public class AdminController : ControllerBase
 {
     // Must match SmtpEmailProvider.DataProtectionPurpose so both encrypt/decrypt with the same key.
@@ -41,35 +46,48 @@ public class AdminController : ControllerBase
     // TENANTS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// <summary>List all tenants.</summary>
+    /// <summary>List all clients. scope:client sees only its own record.</summary>
     [HttpGet("tenants")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetTenants(CancellationToken ct)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var tenants = await db.Tenants.AsNoTracking().OrderBy(t => t.TenantId).ToListAsync(ct);
+        IQueryable<TenantEntity> query = db.Tenants.AsNoTracking().OrderBy(t => t.ClientId);
+
+        if (!IsAdminScope())
+        {
+            var clientId = GetClientId();
+            if (clientId is null) return Forbid();
+            query = query.Where(t => t.ClientId == clientId);
+        }
+
+        var tenants = await query.ToListAsync(ct);
         return Ok(tenants.Select(TenantResponse));
     }
 
-    /// <summary>Get a single tenant by ID.</summary>
-    [HttpGet("tenants/{tenantId}")]
+    /// <summary>Get a single client by ID. scope:client can only access its own record.</summary>
+    [HttpGet("tenants/{clientId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetTenant(string tenantId, CancellationToken ct)
+    public async Task<IActionResult> GetTenant(string clientId, CancellationToken ct)
     {
+        var effectiveClientId = ResolveClientId(clientId);
+        if (effectiveClientId is null) return Forbid();
+
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var tenant = await db.Tenants.AsNoTracking()
-            .FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
+            .FirstOrDefaultAsync(t => t.ClientId == effectiveClientId, ct);
         return tenant is null ? NotFound() : Ok(TenantResponse(tenant));
     }
 
-    /// <summary>Create a new tenant.</summary>
-    [HttpPost("tenants/{tenantId}")]
+    /// <summary>Create a new client. Requires scope:admin.</summary>
+    [HttpPost("tenants/{clientId}")]
+    [Authorize(Policy = "AdminOnly")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CreateTenant(
-        string tenantId,
+        string clientId,
         [FromBody] UpsertTenantRequest req,
         CancellationToken ct)
     {
@@ -77,13 +95,13 @@ public class AdminController : ControllerBase
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
-        if (await db.Tenants.AnyAsync(t => t.TenantId == tenantId, ct))
-            return Conflict(new { error = $"Tenant '{tenantId}' already exists." });
+        if (await db.Tenants.AnyAsync(t => t.ClientId == clientId, ct))
+            return Conflict(new { error = $"Client '{clientId}' already exists." });
 
         var entity = new TenantEntity
         {
-            TenantId = tenantId,
-            DisplayName = req.DisplayName,
+            ClientId = clientId,
+            DisplayName = req.DisplayName.Trim(),
             EmailProvider = req.EmailProvider,
             EmailFrom = req.EmailFrom,
             EmailFromName = req.EmailFromName,
@@ -96,26 +114,29 @@ public class AdminController : ControllerBase
         db.Tenants.Add(entity);
         await db.SaveChangesAsync(ct);
 
-        return CreatedAtAction(nameof(GetTenant), new { tenantId }, TenantResponse(entity));
+        return CreatedAtAction(nameof(GetTenant), new { clientId }, TenantResponse(entity));
     }
 
-    /// <summary>Update an existing tenant.</summary>
-    [HttpPut("tenants/{tenantId}")]
+    /// <summary>Update an existing client. scope:client can only update its own record.</summary>
+    [HttpPut("tenants/{clientId}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateTenant(
-        string tenantId,
+        string clientId,
         [FromBody] UpsertTenantRequest req,
         CancellationToken ct)
     {
+        var effectiveClientId = ResolveClientId(clientId);
+        if (effectiveClientId is null) return Forbid();
         if (!ModelState.IsValid) return ValidationProblem();
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var entity = await db.Tenants.FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
+        var entity = await db.Tenants.FirstOrDefaultAsync(t => t.ClientId == effectiveClientId, ct);
         if (entity is null) return NotFound();
 
-        entity.DisplayName = req.DisplayName;
+        entity.DisplayName = req.DisplayName.Trim();
         entity.EmailProvider = req.EmailProvider;
         entity.EmailFrom = req.EmailFrom;
         entity.EmailFromName = req.EmailFromName;
@@ -128,24 +149,25 @@ public class AdminController : ControllerBase
 
         await db.SaveChangesAsync(ct);
 
-        _tenantProvider.InvalidateCache(tenantId);
+        _tenantProvider.InvalidateCache(effectiveClientId);
         return Ok(TenantResponse(entity));
     }
 
-    /// <summary>Delete a tenant (and its templates via cascade).</summary>
-    [HttpDelete("tenants/{tenantId}")]
+    /// <summary>Delete a client (and its templates via cascade). Requires scope:admin.</summary>
+    [HttpDelete("tenants/{clientId}")]
+    [Authorize(Policy = "AdminOnly")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> DeleteTenant(string tenantId, CancellationToken ct)
+    public async Task<IActionResult> DeleteTenant(string clientId, CancellationToken ct)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var entity = await db.Tenants.FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
+        var entity = await db.Tenants.FirstOrDefaultAsync(t => t.ClientId == clientId, ct);
         if (entity is null) return NotFound();
 
         db.Tenants.Remove(entity);
         await db.SaveChangesAsync(ct);
 
-        _tenantProvider.InvalidateCache(tenantId);
+        _tenantProvider.InvalidateCache(clientId);
         return NoContent();
     }
 
@@ -153,28 +175,43 @@ public class AdminController : ControllerBase
     // TEMPLATES
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// <summary>List all templates for a tenant.</summary>
-    [HttpGet("tenants/{tenantId}/templates")]
+    /// <summary>List all templates for a client. scope:client can only list its own templates.</summary>
+    [HttpGet("tenants/{clientId}/templates")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetTemplates(string tenantId, CancellationToken ct)
+    public async Task<IActionResult> GetTemplates(string clientId, CancellationToken ct)
     {
+        var effectiveClientId = ResolveClientId(clientId);
+        if (effectiveClientId is null) return Forbid();
+
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var templates = await db.Templates.AsNoTracking()
-            .Where(t => t.TenantId == tenantId)
+            .Where(t => t.ClientId == effectiveClientId || t.ClientId == "default")
             .OrderBy(t => t.TemplateName).ThenBy(t => t.Channel).ThenBy(t => t.Language)
             .ToListAsync(ct);
-        return Ok(templates.Select(TemplateResponse));
+
+        var mergedTemplates = templates
+            .GroupBy(t => $"{t.TemplateName}||{t.Channel}||{t.Language}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderBy(t => string.Equals(t.ClientId, effectiveClientId, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenByDescending(t => t.Version)
+                .First())
+            .Select(TemplateResponse);
+
+        return Ok(mergedTemplates);
     }
 
-    /// <summary>Create or update a template for a tenant (upsert by name+channel+language).</summary>
-    [HttpPost("tenants/{tenantId}/templates")]
+    /// <summary>Create or update a template for a client. scope:client can only manage its own templates.</summary>
+    [HttpPost("tenants/{clientId}/templates")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> UpsertTemplate(
-        string tenantId,
+        string clientId,
         [FromBody] UpsertTemplateRequest req,
         CancellationToken ct)
     {
+        var effectiveClientId = ResolveClientId(clientId);
+        if (effectiveClientId is null) return Forbid();
         if (!ModelState.IsValid) return ValidationProblem();
 
         var channel = req.Channel.ToString();
@@ -182,7 +219,7 @@ public class AdminController : ControllerBase
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
         var existing = await db.Templates.FirstOrDefaultAsync(
-            t => t.TenantId == tenantId
+                        t => t.ClientId == effectiveClientId
               && t.TemplateName == req.TemplateName
               && t.Channel == channel
               && t.Language == req.Language, ct);
@@ -198,7 +235,7 @@ public class AdminController : ControllerBase
         {
             existing = new NotificationTemplateEntity
             {
-                TenantId = tenantId,
+                ClientId = effectiveClientId,
                 TemplateName = req.TemplateName,
                 Channel = channel,
                 Language = req.Language,
@@ -211,7 +248,7 @@ public class AdminController : ControllerBase
         await db.SaveChangesAsync(ct);
 
         // Invalidate cache for all fallback keys that might have resolved this template
-        var key = new Domain.Models.NotificationTemplateKey(tenantId, req.TemplateName, req.Channel, req.Language);
+    var key = new Domain.Models.NotificationTemplateKey(effectiveClientId, req.TemplateName, req.Channel, req.Language);
         _templateRepository.InvalidateCache(key);
 
         return Ok(TemplateResponse(existing));
@@ -225,6 +262,8 @@ public class AdminController : ControllerBase
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var entity = await db.Templates.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (entity is not null && !CanReadTemplate(entity))
+            return Forbid();
         return entity is null ? NotFound() : Ok(TemplateDetailResponse(entity));
     }
 
@@ -242,6 +281,7 @@ public class AdminController : ControllerBase
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var entity = await db.Templates.FirstOrDefaultAsync(t => t.Id == id, ct);
         if (entity is null) return NotFound();
+        if (!CanMutateTemplate(entity)) return Forbid();
 
         entity.Content = req.Content;
         entity.IsActive = req.IsActive;
@@ -251,7 +291,7 @@ public class AdminController : ControllerBase
         await db.SaveChangesAsync(ct);
 
         var key = new Domain.Models.NotificationTemplateKey(
-            entity.TenantId, entity.TemplateName, req.Channel, entity.Language);
+            entity.ClientId, entity.TemplateName, req.Channel, entity.Language);
         _templateRepository.InvalidateCache(key);
 
         return Ok(TemplateResponse(entity));
@@ -266,6 +306,7 @@ public class AdminController : ControllerBase
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var entity = await db.Templates.FirstOrDefaultAsync(t => t.Id == id, ct);
         if (entity is null) return NotFound();
+        if (!CanMutateTemplate(entity)) return Forbid();
 
         db.Templates.Remove(entity);
         await db.SaveChangesAsync(ct);
@@ -273,11 +314,54 @@ public class AdminController : ControllerBase
         return NoContent();
     }
 
+    // ── Scope helpers ─────────────────────────────────────────────────────────
+
+    private bool IsAdminScope() =>
+        User.HasClaim("scope", "admin");
+
+    private string? GetClientId() =>
+        User.FindFirst("notificationClientId")?.Value;
+
+    private string? ResolveClientId(string? requestedClientId)
+    {
+        if (IsAdminScope())
+            return requestedClientId;
+
+        return GetClientId();
+    }
+
+    private bool CanReadTemplate(NotificationTemplateEntity entity)
+    {
+        if (IsAdminScope())
+            return true;
+
+        var clientId = GetClientId();
+        if (clientId is null)
+            return false;
+
+        return string.Equals(entity.ClientId, clientId, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(entity.ClientId, "default", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool CanMutateTemplate(NotificationTemplateEntity entity)
+    {
+        if (IsAdminScope())
+            return true;
+
+        var clientId = GetClientId();
+        if (clientId is null)
+            return false;
+
+        return !string.Equals(entity.ClientId, "default", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(entity.ClientId, clientId, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ── Response projections ──────────────────────────────────────────────────
 
     private static object TenantResponse(TenantEntity t) => new
     {
-        t.TenantId,
+        t.Id,
+        t.ClientId,
         t.DisplayName,
         t.EmailProvider,
         t.EmailFrom,
@@ -335,7 +419,7 @@ public class AdminController : ControllerBase
     private static object TemplateResponse(NotificationTemplateEntity t) => new
     {
         t.Id,
-        t.TenantId,
+        t.ClientId,
         t.TemplateName,
         t.Channel,
         t.Language,
@@ -349,7 +433,7 @@ public class AdminController : ControllerBase
     private static object TemplateDetailResponse(NotificationTemplateEntity t) => new
     {
         t.Id,
-        t.TenantId,
+        t.ClientId,
         t.TemplateName,
         t.Channel,
         t.Language,

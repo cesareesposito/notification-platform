@@ -4,7 +4,7 @@ namespace Notification.Api.Requests;
 
 public class PeriodicEmailRequest
 {
-    [Required] public string TenantId { get; init; } = string.Empty;
+    [Required] public string ClientId { get; init; } = string.Empty;
     [Required, EmailAddress] public string Recipient { get; init; } = string.Empty;
     public string? RecipientName { get; init; }
     [Required] public string TemplateName { get; init; } = string.Empty;

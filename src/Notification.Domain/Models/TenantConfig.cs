@@ -5,7 +5,7 @@ namespace Notification.Domain.Models;
 /// </summary>
 public class TenantConfig
 {
-    public string TenantId { get; init; } = string.Empty;
+    public string ClientId { get; init; } = string.Empty;
     public string DisplayName { get; init; } = string.Empty;
 
     // Email

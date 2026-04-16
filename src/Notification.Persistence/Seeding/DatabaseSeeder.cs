@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Notification.Persistence.Entities;
 
@@ -14,11 +16,16 @@ public class DatabaseSeeder
 {
     private readonly IDbContextFactory<NotificationDbContext> _dbFactory;
     private readonly ILogger<DatabaseSeeder> _logger;
+    private readonly IConfiguration _configuration;
 
-    public DatabaseSeeder(IDbContextFactory<NotificationDbContext> dbFactory, ILogger<DatabaseSeeder> logger)
+    public DatabaseSeeder(
+        IDbContextFactory<NotificationDbContext> dbFactory,
+        ILogger<DatabaseSeeder> logger,
+        IConfiguration configuration)
     {
         _dbFactory = dbFactory;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public async Task SeedAsync(string templatesBasePath = "templates", CancellationToken ct = default)
@@ -32,7 +39,10 @@ public class DatabaseSeeder
         // 2. Seed tenants
         await SeedTenantsAsync(db, ct);
 
-        // 3. Import filesystem templates
+        // 3. Seed admin users
+        await SeedAdminUsersAsync(db, ct);
+
+        // 4. Import filesystem templates
         await ImportFilesystemTemplatesAsync(db, templatesBasePath, ct);
 
         _logger.LogInformation("Database seeding completed.");
@@ -44,15 +54,15 @@ public class DatabaseSeeder
     {
         foreach (var seed in SeedTenants)
         {
-            var exists = await db.Tenants.AnyAsync(t => t.TenantId == seed.TenantId, ct);
+            var exists = await db.Tenants.AnyAsync(t => t.ClientId == seed.ClientId, ct);
             if (exists)
             {
-                _logger.LogDebug("Tenant '{TenantId}' already exists, skipping.", seed.TenantId);
+                _logger.LogDebug("Client '{ClientId}' already exists, skipping.", seed.ClientId);
                 continue;
             }
 
             db.Tenants.Add(seed);
-            _logger.LogInformation("Seeded tenant '{TenantId}'.", seed.TenantId);
+            _logger.LogInformation("Seeded client '{ClientId}'.", seed.ClientId);
         }
 
         await db.SaveChangesAsync(ct);
@@ -66,7 +76,7 @@ public class DatabaseSeeder
         // "default" is the virtual fallback tenant — templates here are shared by all tenants
         new()
         {
-            TenantId = "default",
+            ClientId = "default",
             DisplayName = "Default (fallback templates)",
             EmailProvider = "Smtp",
             PushProvider = "Firebase",
@@ -74,7 +84,7 @@ public class DatabaseSeeder
         },
         new()
         {
-            TenantId = "tenant-a",
+            ClientId = "tenant-a",
             DisplayName = "Tenant A",
             EmailProvider = "Smtp",
             EmailFrom = "noreply@tenant-a.com",
@@ -91,7 +101,7 @@ public class DatabaseSeeder
         },
         new()
         {
-            TenantId = "tenant-b",
+            ClientId = "tenant-b",
             DisplayName = "Tenant B",
             EmailProvider = "Smtp",
             EmailFrom = "noreply@tenant-b.com",
@@ -105,11 +115,36 @@ public class DatabaseSeeder
         }
     ];
 
+    // ── Admin Users ───────────────────────────────────────────────────────────
+
+    private async Task SeedAdminUsersAsync(NotificationDbContext db, CancellationToken ct)
+    {
+        if (await db.AdminUsers.AnyAsync(ct))
+        {
+            _logger.LogDebug("Admin users already seeded, skipping.");
+            return;
+        }
+
+        var defaultPassword = _configuration["AdminAuth:DefaultPassword"] ?? "changeme";
+        var hasher = new PasswordHasher<AdminUserEntity>();
+        var admin = new AdminUserEntity
+        {
+            Username = "admin",
+            Role = "admin",
+            IsActive = true
+        };
+        admin.PasswordHash = hasher.HashPassword(admin, defaultPassword);
+
+        db.AdminUsers.Add(admin);
+        await db.SaveChangesAsync(ct);
+        _logger.LogInformation("Seeded admin user 'admin'.");
+    }
+
     // ── Filesystem template import ────────────────────────────────────────────
 
     /// <summary>
     /// Walks <paramref name="basePath"/> looking for files matching:
-    ///   {tenantId}/{channel}/{language}/{templateName}.scriban
+    ///   {clientId}/{channel}/{language}/{templateName}.scriban
     /// and upserts them into notification_templates.
     /// </summary>
     private async Task ImportFilesystemTemplatesAsync(NotificationDbContext db, string basePath, CancellationToken ct)
@@ -127,14 +162,14 @@ public class DatabaseSeeder
             var relative = Path.GetRelativePath(basePath, file);
             var parts = relative.Split(Path.DirectorySeparatorChar);
 
-            // Expected structure: tenantId / channel / language / templateName.scriban
+            // Expected structure: clientId / channel / language / templateName.scriban
             if (parts.Length != 4)
             {
                 _logger.LogWarning("Skipping template file with unexpected path: {File}", relative);
                 continue;
             }
 
-            var tenantId = parts[0];
+            var clientId = parts[0];
             var channelRaw = parts[1];
             var language = parts[2];
             var templateName = Path.GetFileNameWithoutExtension(parts[3]);
@@ -152,7 +187,7 @@ public class DatabaseSeeder
 
             // Upsert: update if exists, insert if not
                         var existing = await db.Templates.FirstOrDefaultAsync(
-                t => t.TenantId == tenantId
+                    t => t.ClientId == clientId
                   && t.TemplateName == templateName
                   && t.Channel == channel
                   && t.Language == language, ct);
@@ -167,15 +202,15 @@ public class DatabaseSeeder
             {
                 db.Templates.Add(new NotificationTemplateEntity
                 {
-                    TenantId = tenantId,
+                    ClientId = clientId,
                     TemplateName = templateName,
                     Channel = channel,
                     Language = language,
                     Content = content
                 });
                 _logger.LogInformation(
-                    "Imported template '{Name}' for tenant='{TenantId}' channel={Channel} lang={Lang}",
-                    templateName, tenantId, channel, language);
+                    "Imported template '{Name}' for client='{ClientId}' channel={Channel} lang={Lang}",
+                    templateName, clientId, channel, language);
             }
         }
 

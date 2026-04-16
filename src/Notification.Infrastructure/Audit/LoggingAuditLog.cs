@@ -20,11 +20,11 @@ public class LoggingAuditLog : INotificationAuditLog
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation(
-            "Notification audit | MessageId={MessageId} Tenant={TenantId} Channel={Channel} " +
+            "Notification audit | MessageId={MessageId} Client={ClientId} Channel={Channel} " +
             "Recipient={Recipient} Template={Template} Status={Status} Attempt={Attempt} " +
             "ProviderMsgId={ProviderMsgId} Error={Error}",
             message.MessageId,
-            message.Request.TenantId,
+            message.Request.ClientId,
             message.Request.Channel,
             message.Request.Recipient,
             message.Request.TemplateName,

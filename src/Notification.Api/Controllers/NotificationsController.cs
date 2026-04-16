@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Notification.Api.Requests;
 using Notification.Domain.Abstractions;
@@ -8,6 +9,7 @@ namespace Notification.Api.Controllers;
 [ApiController]
 [Produces("application/json")]
 [Route("api/[controller]")]
+[Authorize(Policy = "AnyAuth")]
 public class NotificationsController : ControllerBase
 {
     private readonly INotificationQueue _queue;
@@ -35,19 +37,23 @@ public class NotificationsController : ControllerBase
     {
         if (!ModelState.IsValid) return ValidationProblem();
 
-        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.TenantId, ct);
-        if (tenantConfig is null)
-            return NotFound(new { error = $"Tenant '{req.TenantId}' not found." });
+        var clientId = ResolveClientId(req.ClientId);
+        if (clientId is null)
+            return Forbid();
 
-        var message = BuildMessage(req.TenantId, NotificationChannel.Email, req.Recipient,
+        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(clientId, ct);
+        if (tenantConfig is null)
+            return NotFound(new { error = $"Client '{clientId}' not found." });
+
+        var message = BuildMessage(clientId, NotificationChannel.Email, req.Recipient,
             req.RecipientName, req.TemplateName, req.Language, req.Data,
             req.IdempotencyKey, req.ScheduledAt);
 
         await _queue.PublishAsync(message, ct);
 
         _logger.LogInformation(
-            "Enqueued email notification {MessageId} for tenant {TenantId}",
-            message.MessageId, req.TenantId);
+            "Enqueued email notification {MessageId} for client {ClientId}",
+            message.MessageId, clientId);
 
         return Accepted(new { messageId = message.MessageId });
     }
@@ -63,19 +69,23 @@ public class NotificationsController : ControllerBase
     {
         if (!ModelState.IsValid) return ValidationProblem();
 
-        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.TenantId, ct);
-        if (tenantConfig is null)
-            return NotFound(new { error = $"Tenant '{req.TenantId}' not found." });
+        var clientId = ResolveClientId(req.ClientId);
+        if (clientId is null)
+            return Forbid();
 
-        var message = BuildMessage(req.TenantId, NotificationChannel.Push, req.DeviceToken,
+        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(clientId, ct);
+        if (tenantConfig is null)
+            return NotFound(new { error = $"Client '{clientId}' not found." });
+
+        var message = BuildMessage(clientId, NotificationChannel.Push, req.DeviceToken,
             req.RecipientName, req.TemplateName, req.Language, req.Data,
             req.IdempotencyKey, req.ScheduledAt);
 
         await _queue.PublishAsync(message, ct);
 
         _logger.LogInformation(
-            "Enqueued push notification {MessageId} for tenant {TenantId}",
-            message.MessageId, req.TenantId);
+            "Enqueued push notification {MessageId} for client {ClientId}",
+            message.MessageId, clientId);
 
         return Accepted(new { messageId = message.MessageId });
     }
@@ -91,9 +101,13 @@ public class NotificationsController : ControllerBase
     {
         if (!ModelState.IsValid) return ValidationProblem();
 
-        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(req.TenantId, ct);
+        var clientId = ResolveClientId(req.ClientId);
+        if (clientId is null)
+            return Forbid();
+
+        var tenantConfig = await _tenantConfigProvider.GetConfigAsync(clientId, ct);
         if (tenantConfig is null)
-            return NotFound(new { error = $"Tenant '{req.TenantId}' not found." });
+            return NotFound(new { error = $"Client '{clientId}' not found." });
 
         var messageIds = new List<Guid>(req.Recipients.Count);
 
@@ -103,7 +117,7 @@ public class NotificationsController : ControllerBase
             var data = new Dictionary<string, object?>(req.SharedData);
             foreach (var (k, v) in recipient.Data) data[k] = v;
 
-            var message = BuildMessage(req.TenantId, req.Channel, recipient.Recipient,
+            var message = BuildMessage(clientId, req.Channel, recipient.Recipient,
                 recipient.RecipientName, req.TemplateName, req.Language, data,
                 idempotencyKey: null, scheduledAt: null);
 
@@ -112,8 +126,8 @@ public class NotificationsController : ControllerBase
         }
 
         _logger.LogInformation(
-            "Enqueued {Count} bulk notifications for tenant {TenantId}",
-            messageIds.Count, req.TenantId);
+            "Enqueued {Count} bulk notifications for client {ClientId}",
+            messageIds.Count, clientId);
 
         return Accepted(new { count = messageIds.Count, messageIds });
     }
@@ -121,7 +135,7 @@ public class NotificationsController : ControllerBase
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static NotificationMessage BuildMessage(
-        string tenantId,
+        string clientId,
         NotificationChannel channel,
         string recipient,
         string? recipientName,
@@ -135,7 +149,7 @@ public class NotificationsController : ControllerBase
         {
             Request = new NotificationRequest
             {
-                TenantId = tenantId,
+                ClientId = clientId,
                 Channel = channel,
                 Recipient = recipient,
                 RecipientName = recipientName,
@@ -146,5 +160,19 @@ public class NotificationsController : ControllerBase
                 ScheduledAt = scheduledAt
             }
         };
+    }
+
+    private bool IsAdminScope() =>
+        User.HasClaim("scope", "admin");
+
+    private string? GetClientId() =>
+        User.FindFirst("notificationClientId")?.Value;
+
+    private string? ResolveClientId(string? requestedClientId)
+    {
+        if (IsAdminScope())
+            return requestedClientId;
+
+        return GetClientId();
     }
 }

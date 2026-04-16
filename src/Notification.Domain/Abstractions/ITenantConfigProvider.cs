@@ -8,6 +8,6 @@ namespace Notification.Domain.Abstractions;
 public interface ITenantConfigProvider
 {
     Task<TenantConfig?> GetConfigAsync(
-        string tenantId,
+    string clientId,
         CancellationToken cancellationToken = default);
 }

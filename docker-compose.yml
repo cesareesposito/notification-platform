@@ -50,8 +50,8 @@ services:
       context: .
       dockerfile: docker/Notification.Api.Dockerfile
     container_name: notification-api
-    ports:
-      - "8891:8080"
+    # ports:
+    #   - "8891:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__NotificationDb: "Host=postgres;Port=5432;Database=notifications;Username=notification;Password=secret"

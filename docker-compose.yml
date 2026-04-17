@@ -14,6 +14,8 @@ services:
       POSTGRES_PASSWORD: secret
     volumes:
       - ./data/postgres-data:/var/lib/postgresql/data
+    networks:
+      - notification_internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U notification -d notifications"]
       interval: 10s
@@ -33,6 +35,8 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
     volumes:
       - ./data/rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - notification_internal
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
       interval: 10s
@@ -68,6 +72,9 @@ services:
     volumes:
       - ./templates:/app/templates:ro
       - ./data/data-protection-keys:/keys
+    networks:
+      - notification_internal
+      - platform_integration
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,9 +102,17 @@ services:
       - ./templates:/app/templates:ro
       - ./credentials:/credentials:ro
       - ./data/data-protection-keys:/keys
+    networks:
+      - notification_internal
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped
+
+networks:
+  notification_internal:
+    driver: bridge
+  platform_integration:
+    external: true

@@ -1,0 +1,13 @@
+---
+subject: Utenza disattivata {{ target_user_name }}
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Utenza disattivata</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Ciao {{ recipient_name }},</h1>
+  <p>{{ actor_name }} ha disattivato la tua utenza.</p>
+  <p><strong>Nome:</strong> {{ target_user_name }}</p>
+  <p><strong>Email:</strong> {{ target_user_email }}</p>
+</body>
+</html>

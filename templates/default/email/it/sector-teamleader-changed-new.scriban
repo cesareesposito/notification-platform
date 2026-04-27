@@ -1,0 +1,12 @@
+---
+subject: Sei stato nominato teamleader di {{ sector_name }}
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Nuovo teamleader</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Ciao {{ recipient_name }},</h1>
+  <p>{{ actor_name }} ti ha assegnato come teamleader del settore <strong>{{ sector_name }}</strong>.</p>
+  <p><a href="{{ sector_url }}">Apri settore</a></p>
+</body>
+</html>

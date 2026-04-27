@@ -2,6 +2,7 @@ using Notification.Domain.Abstractions;
 using Notification.Domain.Models;
 using Scriban;
 using Scriban.Runtime;
+using System.Text.RegularExpressions;
 
 namespace Notification.Templates;
 
@@ -37,10 +38,7 @@ public class ScribanTemplateRenderer : ITemplateRenderer
         var subject = await RenderStringAsync(subjectRaw, context);
         var body = await RenderStringAsync(bodyRaw, context);
 
-        // Distinguish HTML vs plain text by presence of html/body tags
-        var isHtml = body.Contains("<html", StringComparison.OrdinalIgnoreCase)
-                  || body.Contains("<body", StringComparison.OrdinalIgnoreCase)
-                  || body.Contains("<div", StringComparison.OrdinalIgnoreCase);
+        var isHtml = LooksLikeHtml(body);
 
         return new RenderedTemplate
         {
@@ -89,7 +87,15 @@ public class ScribanTemplateRenderer : ITemplateRenderer
     private static string StripHtml(string html)
     {
         // Very naive strip for plain-text fallback
-        var result = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " ");
-        return System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ").Trim();
+        var result = Regex.Replace(html, "<[^>]+>", " ");
+        return Regex.Replace(result, @"\s{2,}", " ").Trim();
+    }
+
+    private static bool LooksLikeHtml(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return false;
+
+        return Regex.IsMatch(body, @"<\s*/?\s*[a-zA-Z][^>]*>", RegexOptions.CultureInvariant);
     }
 }

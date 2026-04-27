@@ -1,0 +1,12 @@
+---
+subject: Sector managers changed for {{ sector_name }}
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Sector managers changed</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Hello {{ recipient_name }},</h1>
+  <p>{{ actor_name }} changed the managers of sector <strong>{{ sector_name }}</strong>.</p>
+  <p><a href="{{ sector_url }}">Open sector</a></p>
+</body>
+</html>

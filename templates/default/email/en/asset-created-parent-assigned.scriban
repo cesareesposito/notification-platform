@@ -1,0 +1,13 @@
+---
+subject: New child asset created for {{ parent_asset_name }}
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>New child asset</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Hello {{ recipient_name }},</h1>
+  <p>{{ actor_name }} created a new asset linked to <strong>{{ parent_asset_name }}</strong>.</p>
+  <p><strong>New asset:</strong> {{ asset_name }}</p>
+  <p><a href="{{ asset_url }}">Open asset</a></p>
+</body>
+</html>

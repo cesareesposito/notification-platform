@@ -1,0 +1,13 @@
+---
+subject: Stato asset aggiornato {{ asset_name }}
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Stato asset aggiornato</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Ciao {{ recipient_name }},</h1>
+  <p>{{ actor_name }} ha cambiato lo stato dell'asset <strong>{{ asset_name }}</strong>.</p>
+  <p><strong>Nuovo stato:</strong> {{ current_status_name }}</p>
+  <p><a href="{{ asset_url }}">Apri asset</a></p>
+</body>
+</html>

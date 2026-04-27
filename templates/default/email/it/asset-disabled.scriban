@@ -1,0 +1,12 @@
+---
+subject: Asset disabilitato {{ asset_name }}
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Asset disabilitato</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Ciao {{ recipient_name }},</h1>
+  <p>{{ actor_name }} ha disabilitato l'asset <strong>{{ asset_name }}</strong>.</p>
+  <p><a href="{{ asset_url }}">Apri asset</a></p>
+</body>
+</html>

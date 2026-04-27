@@ -1,0 +1,13 @@
+---
+subject: Asset status updated {{ asset_name }}
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Asset status updated</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Hello {{ recipient_name }},</h1>
+  <p>{{ actor_name }} changed the status of asset <strong>{{ asset_name }}</strong>.</p>
+  <p><strong>Current status:</strong> {{ current_status_name }}</p>
+  <p><a href="{{ asset_url }}">Open asset</a></p>
+</body>
+</html>

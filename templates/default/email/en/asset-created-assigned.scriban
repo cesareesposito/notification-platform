@@ -1,0 +1,13 @@
+---
+subject: New assigned asset {{ asset_name }}
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>New assigned asset</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Hello {{ recipient_name }},</h1>
+  <p>{{ actor_name }} created a new asset and assigned it to you.</p>
+  <p><strong>Asset:</strong> {{ asset_name }}</p>
+  <p><a href="{{ asset_url }}">Open asset</a></p>
+</body>
+</html>

@@ -1,0 +1,12 @@
+---
+subject: Report #{{ report_id }} validato
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Report validato</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Ciao {{ recipient_name }},</h1>
+  <p>Il report <strong>#{{ report_id }}</strong> del {{ report_date }} e stato validato.</p>
+  <p><strong>Validato da:</strong> {{ validated_by }}</p>
+</body>
+</html>

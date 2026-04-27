@@ -1,0 +1,13 @@
+---
+subject: New report assigned #{{ report_id }}
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>New report assigned</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Hello {{ recipient_name }},</h1>
+  <p>A new report has been assigned to you.</p>
+  <p><strong>Report:</strong> #{{ report_id }} dated {{ report_date }}</p>
+  <p><strong>Assigned to:</strong> {{ assigned_user_name }}</p>
+</body>
+</html>

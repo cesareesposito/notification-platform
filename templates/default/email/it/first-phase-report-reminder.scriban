@@ -1,0 +1,15 @@
+---
+subject: Promemoria report #{{ report_id }} in partenza
+---
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Promemoria report</title></head>
+<body style="font-family: sans-serif; color: #333;">
+  <h1>Ciao {{ recipient_name }},</h1>
+  <p>Ti ricordiamo che il report <strong>#{{ report_id }}</strong> del {{ report_date }} iniziera tra {{ days_before_start }} giorni.</p>
+  <p><strong>Workflow:</strong> {{ workflow_name }}</p>
+  <p><strong>Asset:</strong> {{ asset_name }}</p>
+  <p><strong>Form:</strong> {{ form_name }}</p>
+  <p><strong>Data inizio:</strong> {{ date_start }}</p>
+</body>
+</html>
